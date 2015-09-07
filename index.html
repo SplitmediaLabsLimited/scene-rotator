@@ -1,0 +1,53 @@
+<!--
+﻿/**
+*
+* This "Scene Rotator" html is made to illustrate how to make an extension
+* which automatically switches(rotates) between certain scenes as indicated
+* at a certain interval in a certain order.
+*
+* Feel free to use the sample code to make html files
+* compatible with XBC 2.0 Extensions.
+* 
+**/
+-->
+<!doctype html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Scene Switch Script Plugin</title>
+
+	<script src="ui-components/webcomponentsjs/webcomponents.js"></script>
+	<link rel="import" href="ui-components/polymer.html" />
+	<link rel="import" href="ui-components/imports.html" />
+	<link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+	<polymer-element name="scene-rotator">
+		<template>
+			<link rel="stylesheet" href="./css/scene_rotator.css" />
+			<div id="windowContainer">
+				<div id="windowHeader">
+						<span id="indicator">INACTIVE</span>
+						<xui-button id="toggleRun" on-click="{{ toggleSwitcher }}">
+								Start Script
+						</xui-button>
+				</div>
+				<div id="windowContent">
+					<label>Rotation Time (seconds)</label>
+					<br/>
+					<xui-input id="rotationInterval" type="number" min="0" value="5"></xui-input>
+					<br/>
+					<label>Scenes to rotate (comma-separated, ordered as per rotation sequence)</label>
+					<br/>
+					<xui-input id="inputScenes" ></xui-input>					
+				</div>
+			</div>
+		</template>
+		<script src="./js/xjs.js"></script>
+		<script src="./js/scene_rotator.js"></script>
+	</polymer-element>
+	<div id="container">
+		<scene-rotator></scene-rotator>
+	</div>
+</body>
+</html>

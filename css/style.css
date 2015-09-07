@@ -1,0 +1,44 @@
+@font-face
+{
+    font-family: 'Roboto';
+    src: url("../fonts/roboto.woff");
+}
+
+@font-face
+{
+    font-family: 'Roboto';
+    src: url("../fonts/roboto.woff");
+}
+
+html,
+body
+{
+    height: 100%;
+    font-family: Roboto, Arial;
+    font-size: 14px;
+    background-color: #121212;
+    color: #888;
+    margin: 0;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+label
+{
+    color: #CCCCCC;
+}
+
+body
+{
+    padding: 8px;
+    box-sizing: border-box;
+}
+
+#container
+{
+    height: 100%;
+}
