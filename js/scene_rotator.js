@@ -23,15 +23,18 @@
 
       changeScene: function() {
         var _this = this;
-        var sceneArray = _this.$.inputScenes.value.split(",");
+        //var sceneArray = _this.$.inputScenes.value.split(",");
+        var sceneArray = _this.$.sceneList.optionlist.map(function(obj) {
+          return obj.id;
+        });
         var sceneNumber;
         Scene.getActiveScene().then(function(scene) {
           scene.getSceneNumber().then(function(num) {
             sceneNumber = num;
-            var indexOfCurrentScene = sceneArray.indexOf(String(sceneNumber));
+            var indexOfCurrentScene = sceneArray.indexOf(sceneNumber);
 
             if (indexOfCurrentScene >= 0) {
-              if (sceneArray[_this.lastIndex] == String(scene)) {
+              if (sceneArray[_this.lastIndex] == scene) {
                 //
                 var next;
                 if (_this.lastIndex < sceneArray.length - 1) {
@@ -73,8 +76,7 @@
           this.$.indicator.innerHTML = "INACTIVE";
         } else {
           if (_this.$.rotationInterval.value == "" ||
-              _this.$.inputScenes.value == "" ||
-              _this.$.inputScenes.value == undefined) {
+              _this.$.sceneList.optionlist.length === 0) {
             return;
           }
 
