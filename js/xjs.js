@@ -1,213 +1,10 @@
 require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    __.prototype = b.prototype;
-    d.prototype = new __();
-};
-var eventemitter_1 = require('./eventemitter');
-var internal_1 = require('../internal/internal');
-/** This utility class exposes functionality for source plugin developers to
- *  handle the configuration window for their source plugins.
- *
- *  Developers can use this class to specify how their configuration HTML
- *  should be rendered within the built-in window in XSplit Broadcaster.
- *  This class also serves as an event emitter for specific important events.
- *
- *  The framework also uses this class for its own internal purposes.
- */
-var SourceConfigWindow = (function (_super) {
-    __extends(SourceConfigWindow, _super);
-    function SourceConfigWindow() {
-        var _this = this;
-        _super.call(this);
-        window.addEventListener('message', function (event) {
-            try {
-                var data = JSON.parse(event.data);
-            }
-            catch (e) {
-                // syntax error probably happened, exit gracefully
-                return;
-            }
-            switch (data.event) {
-                // currently, restrict messages to selected set
-                case 'set-selected-tab':
-                    this.emit(data.event, data.value);
-                    break;
-                case 'async-callback':
-                    this.emit(data.event, {
-                        asyncId: data.value.asyncId,
-                        result: data.value.result
-                    });
-                    break;
-            }
-        }.bind(this));
-        this.on('config-load', function () {
-            _this._informConfigLoaded();
-        });
-        SourceConfigWindow._instance = this;
-    }
-    SourceConfigWindow.getInstance = function () {
-        if (SourceConfigWindow._instance === undefined) {
-            SourceConfigWindow._instance = new SourceConfigWindow();
-        }
-        return SourceConfigWindow._instance;
-    };
-    // helper function to communicate with built-in container
-    SourceConfigWindow.prototype._notify = function (obj) {
-        window.parent.postMessage(JSON.stringify(obj), '*');
-    };
-    SourceConfigWindow.prototype.useFullWindow = function () {
-        this._setRenderMode(SourceConfigWindow._MODE_FULL);
-    };
-    SourceConfigWindow.prototype.useTabbedWindow = function (config) {
-        this._setRenderMode(SourceConfigWindow._MODE_TABBED);
-        this._declareCustomTabs(config.customTabs);
-        this._setTabOrder(config.tabOrder);
-    };
-    SourceConfigWindow.prototype._setRenderMode = function (renderMode) {
-        this._mode = renderMode;
-        this._notify({
-            event: 'set-mode',
-            value: renderMode
-        });
-    };
-    ;
-    SourceConfigWindow.prototype._setTabOrder = function (tabArray) {
-        this._notify({
-            event: 'set-tab-order',
-            value: JSON.stringify(tabArray)
-        });
-    };
-    ;
-    SourceConfigWindow.prototype._declareCustomTabs = function (tabArray) {
-        this._notify({
-            event: 'set-custom-tabs',
-            value: JSON.stringify(tabArray)
-        });
-    };
-    ;
-    SourceConfigWindow.prototype._informConfigLoaded = function () {
-        this._notify({ event: 'load' });
-    };
-    SourceConfigWindow.prototype.resizeConfig = function (width, height) {
-        if (this._mode === 'full') {
-            this._notify({
-                event: 'resize',
-                value: JSON.stringify({
-                    width: width,
-                    height: height
-                })
-            });
-        }
-        else if (this._mode !== 'embedded') {
-            internal_1.exec('SetDialogSize', String(width), String(height));
-        }
-    };
-    ;
-    SourceConfigWindow.prototype.closeConfig = function () {
-        internal_1.exec('Close');
-    };
-    ;
-    SourceConfigWindow._MODE_FULL = 'full';
-    SourceConfigWindow._MODE_TABBED = 'embedded';
-    return SourceConfigWindow;
-})(eventemitter_1.MyEventEmitter);
-exports.SourceConfigWindow = SourceConfigWindow;
-},{"../internal/internal":22,"./eventemitter":2}],2:[function(require,module,exports){
-// simple event emitter
-var MyEventEmitter = (function () {
-    function MyEventEmitter() {
-        this._handlers = {};
-    }
-    // allows duplicates
-    MyEventEmitter.prototype.on = function (event, handler) {
-        if (this._handlers[event] === undefined) {
-            this._handlers[event] = [];
-        }
-        this._handlers[event].push(handler);
-    };
-    MyEventEmitter.prototype.emit = function (event) {
-        var params = [];
-        for (var _i = 1; _i < arguments.length; _i++) {
-            params[_i - 1] = arguments[_i];
-        }
-        if (this._handlers[event] === undefined) {
-            return;
-        }
-        for (var _a = 0, _b = this._handlers[event]; _a < _b.length; _a++) {
-            var handler = _b[_a];
-            handler.apply(this, params);
-        }
-    };
-    return MyEventEmitter;
-})();
-exports.MyEventEmitter = MyEventEmitter;
-},{}],3:[function(require,module,exports){
-/// <reference path="../../defs/es6-promise.d.ts" />
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    __.prototype = b.prototype;
-    d.prototype = new __();
-};
-var eventemitter_1 = require('./eventemitter');
-/** This utility class is used internally by the framework for certain important
- *  processes. This class also exposes certain important events for
- *
- *
- */
-var SourcePluginWindow = (function (_super) {
-    __extends(SourcePluginWindow, _super);
-    function SourcePluginWindow() {
-        _super.call(this);
-        // TODO: need to document events emitted
-        this.on('message-source', function (message) {
-            if (message.request !== undefined) {
-                if (message.request === 'saveConfig') {
-                    this.emit('save-config', message.data);
-                }
-                else if (message.request === 'applyConfig') {
-                    this.emit('apply-config', message.data);
-                }
-            }
-        });
-        SourcePluginWindow._instance = this;
-    }
-    SourcePluginWindow.getInstance = function () {
-        if (SourcePluginWindow._instance === undefined) {
-            SourcePluginWindow._instance = new SourcePluginWindow();
-        }
-        return SourcePluginWindow._instance;
-    };
-    return SourcePluginWindow;
-})(eventemitter_1.MyEventEmitter);
-exports.SourcePluginWindow = SourcePluginWindow;
-window['MessageSource'] = function (message) {
-    SourcePluginWindow.getInstance().emit("message-source", JSON.parse(message));
-};
-window['SetConfiguration'] = function (configObj) {
-    try {
-        var data = JSON.parse(configObj);
-        var source = SourcePluginWindow.getInstance();
-        source.emit("apply-config", data);
-        source.emit("save-config", data);
-    }
-    catch (e) {
-        // syntax error probably happened, exit gracefully
-        return;
-    }
-};
-},{"./eventemitter":2}],4:[function(require,module,exports){
-/// <reference path="../../defs/es6-promise.d.ts" />
 var app_1 = require('../internal/app');
 var rectangle_1 = require('../util/rectangle');
 var audio_1 = require('../system/audio');
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
-var internal_1 = require('../internal/internal');
-var environment_1 = require('./environment');
 var transition_1 = require('./transition');
 var DEFAULT_SILENCE_DETECTION_THRESHOLD = 5;
 var DEFAULT_SILENCE_DETECTION_PERIOD = 1000;
@@ -218,8 +15,8 @@ var DEFAULT_SILENCE_DETECTION_PERIOD = 1000;
  * ### Basic Usage
  *
  * ```javascript
- * var XJS = require('xjs');
- * var App = new XJS.App();
+ * var xjs = require('xjs');
+ * var App = new xjs.App();
  *
  * App.getFrameTime().then(function(frametime) {
  *   window.frametime = frametime;
@@ -237,8 +34,7 @@ var App = (function () {
      * #### Usage
      *
      * ```javascript
-     * var frameTimeP = App.getFrameTime();
-     * frameTimeP.then(function(res) {
+     * App.getFrameTime().then(function(res) {
      *   var frameTime = res;
      * });
      * ```
@@ -254,13 +50,13 @@ var App = (function () {
      * return: Promise<Rectangle>
      *
      * Gets application default output resolution.
-     * See also: Util/Rectangle
+     *
+     * See also: {@link #util/Rectangle Util/Rectangle}
      *
      * #### Usage
      *
      * ```javascript
-     * var resolutionP = App.getResolution();
-     * resolutionP.then(function(res) {
+     * App.getResolution().then(function(res) {
      *   var height = res.getHeight();
      *   var width = res.getWidth();
      * });
@@ -269,7 +65,7 @@ var App = (function () {
     App.prototype.getResolution = function () {
         return new Promise(function (resolve) {
             app_1.App.get('resolution').then(function (val) {
-                var dimensions = val.split(",");
+                var dimensions = val.split(',');
                 resolve(rectangle_1.Rectangle.fromDimensions(parseInt(dimensions[0]), parseInt(dimensions[1])));
             });
         });
@@ -278,13 +74,13 @@ var App = (function () {
      * return: Promise<Rectangle>
      *
      * Gets application viewport display resolution
-     * See also: Util/Rectangle
+     *
+     * See also: {@link #util/Rectangle Util/Rectangle}
      *
      * #### Usage
      *
      * ```javascript
-     * var viewPortP = App.getViewport();
-     * viewPortP.then(function(res) {
+     * App.getViewport().then(function(res) {
      *   var height = res.getHeight();
      *   var width = res.getWidth();
      * });
@@ -293,7 +89,7 @@ var App = (function () {
     App.prototype.getViewport = function () {
         return new Promise(function (resolve) {
             app_1.App.get('viewport').then(function (val) {
-                var dimensions = val.split(",");
+                var dimensions = val.split(',');
                 resolve(rectangle_1.Rectangle.fromDimensions(parseInt(dimensions[0]), parseInt(dimensions[1])));
             });
         });
@@ -306,8 +102,7 @@ var App = (function () {
      * #### Usage
      *
      * ```javascript
-     * var versionP = App.getVersion();
-     * versionP.then(function(res) {
+     * App.getVersion().then(function(res) {
      *   var version = res;
      * });
      * ```
@@ -325,8 +120,7 @@ var App = (function () {
      * #### Usage
      *
      * ```javascript
-     * var framesrenderedP = App.getFramesRendered();
-     * framesrenderedP.then(function(res) {
+     * App.getFramesRendered().then(function(res) {
      *   var framesrendered = res;
      * });
      * ```
@@ -340,10 +134,11 @@ var App = (function () {
     };
     // Audio Services
     /**
-     * return: Promise<AudioDevice>
+     * return: Promise<AudioDevice[]>
      *
      * Gets the primary microphone device used in the application
-     * See also: System/AudioDevice
+     *
+     * See also: {@link #system/AudioDevice System/AudioDevice}
      *
      * ### Usage
      *
@@ -363,16 +158,17 @@ var App = (function () {
                     resolve(audioDevices[0]);
                 }
                 else {
-                    resolve(new audio_1.AudioDevice({ id: "empty" }));
+                    resolve(new audio_1.AudioDevice({ id: 'empty' }));
                 }
             });
         });
     };
     /**
-     * return: Promise<AudioDevice>
+     * return: Promise<AudioDevice[]>
      *
      * Gets the primary speaker/audio render device used in the application
-     * See also: System/AudioDevice
+     *
+     * See also: {@link #system/AudioDevice System/AudioDevice}
      *
      * ### Usage
      *
@@ -392,19 +188,20 @@ var App = (function () {
                     resolve(audioDevices[1]);
                 }
                 else {
-                    resolve(new audio_1.AudioDevice({ id: "empty" }));
+                    resolve(new audio_1.AudioDevice({ id: 'empty' }));
                 }
             });
         });
     };
     /**
-     * param: device<AudioDevice>
+     * param: (device: AudioDevice)
      * ```
      * return: Promise<boolean>
      * ```
      *
      * Sets the primary microphone device to be used in the application
-     * See also: System/AudioDevice
+     *
+     * See also: {@link #system/AudioDevice System/AudioDevice}
      *
      * ### Usage
      *
@@ -435,13 +232,14 @@ var App = (function () {
         });
     };
     /**
-     * param: device<AudioDevice>
+     * param: (device: AudioDevice)
      * ```
      * return: Promise<boolean>
      * ```
      *
      * Sets the primary speaker/audio render device to be used in the application
-     * See also: System/AudioDevice
+     *
+     * See also: {@link #system/AudioDevice System/AudioDevice}
      *
      * ### Usage
      *
@@ -493,7 +291,7 @@ var App = (function () {
         });
     };
     /**
-     * param: enabled<boolean>
+     * param: (enabled: boolean)
      * ```
      * return: Promise<boolean>
      * ```
@@ -544,7 +342,7 @@ var App = (function () {
         });
     };
     /**
-     * param: sdPeriod<number>
+     * param: (sdPeriod: number)
      * ```
      * return: Promise<boolean>
      * ```
@@ -604,7 +402,7 @@ var App = (function () {
         });
     };
     /**
-     * param: sdThreshold<number>
+     * param: (sdThreshold: number)
      * ```
      * return: Promise<boolean>
      * ```
@@ -640,89 +438,18 @@ var App = (function () {
             });
         });
     };
-    /**
-     * param: url<string>[, width<number>[, height<number>[, flags<number>[, title<string>]]]]
-     *
-     * Creates a persistent modal dialog.<br/>
-     * This method is not available for source
-     *
-     * #### Usage
-     *
-     * ```javascript
-     * // you may use the following:
-     * //     * App.BORDER_ENABLE (1)
-     * //     * App.BORDER_ENABLE_CAPTION (2)
-     * //     * App.BORDER_ENABLE_SIZING (4)
-     * //     * App.BORDER_ENABLE_MINIMIZE (8)
-     * //     * App.BORDER_ENABLE_MAXIMIZE (16)
-     * App.newDialog(url, width, height, flags, title);
-     * ```
-     */
-    App.prototype.newDialog = function (url, width, height, flags, title) {
-        if (width === void 0) { width = 300; }
-        if (height === void 0) { height = 300; }
-        if (environment_1.Environment.isSourcePlugin()) {
-            throw new TypeError('function is not available for source');
-        }
-        else if (url !== undefined && url !== '') {
-            var params = ['NewDialog', url, '', width + ',' + height];
-            for (var i = 3; i < arguments.length; i++) {
-                if (arguments[i] !== undefined)
-                    params.push(String(arguments[i]));
-            }
-            internal_1.exec.apply(this, params);
-        }
-        else {
-            throw new Error('URL parameter expected');
-        }
-    };
-    /**
-     * param: url<string>[, width<number>[, height<number>]]
-     *
-     * Creates a dialog that automatically closes on outside click
-     *
-     * #### Usage
-     *
-     * ```javascript
-     * App.newAutoDialog(url, width, height);
-     * ```
-     */
-    App.prototype.newAutoDialog = function (url, width, height) {
-        if (width === void 0) { width = 300; }
-        if (height === void 0) { height = 300; }
-        if (environment_1.Environment.isSourcePlugin()) {
-            throw new TypeError('function is not available for source');
-        }
-        else if (url !== undefined && url !== '') {
-            internal_1.exec('NewAutoDialog', url, width + ',' + height);
-        }
-        else {
-            throw new Error('URL parameter expected');
-        }
-    };
-    /**
-     * Close a created dialog
-     */
-    App.prototype.closeDialog = function () {
-        if (environment_1.Environment.isSourcePlugin()) {
-            throw new TypeError('function is not available for source');
-        }
-        else {
-            internal_1.exec('CloseDialog');
-        }
-    };
     // Transition Services
     /**
      * return: Promise<Transition>
      *
      * Gets the transition for scene changes
-     * See also: Core/Transition
+     *
+     * See also: {@link #core/Transition Core/Transition}
      *
      * #### Usage
      *
      * ```javascript
-     * var transitionP = App.getTransition();
-     * transitionP.then(function(res) {
+     * App.getTransition().then(function(res) {
      *   var transitionid = res;
      * });
      * ```
@@ -740,13 +467,14 @@ var App = (function () {
         });
     };
     /**
-     * param: transition<Transition>
+     * param: (transition: Transition)
      * ```
-     * return: Promise<Transition>
+     * return: Promise<boolean>
      * ```
      *
      * Sets the transition for scene changes
-     * See also: Core/Transition
+     *
+     * See also: {@link #core/Transition Core/Transition}
      *
      * #### Usage
      *
@@ -775,8 +503,7 @@ var App = (function () {
      * #### Usage
      *
      * ```javascript
-     * var transitionTimeP = App.getTransitionTime();
-     * transitionTimeP.then(function(res) {
+     * App.getTransitionTime().then(function(res) {
      *   var transitiontime = res;
      * });
      * ```
@@ -789,9 +516,9 @@ var App = (function () {
         });
     };
     /**
-     * param: transition<number>
+     * param: (time: number)
      * ```
-     * return: Promise<string>
+     * return: Promise<boolean>
      * ```
      *
      * Sets the scene transition duration in milliseconds
@@ -811,16 +538,97 @@ var App = (function () {
             });
         });
     };
-    // Dialog Services
-    App.BORDER_ENABLE = 1;
-    App.BORDER_ENABLE_CAPTION = 2;
-    App.BORDER_ENABLE_SIZING = 4;
-    App.BORDER_ENABLE_MINIMIZE = 8;
-    App.BORDER_ENABLE_MAXIMIZE = 16;
     return App;
 })();
 exports.App = App;
-},{"../internal/app":19,"../internal/internal":22,"../internal/util/json":24,"../internal/util/xml":26,"../system/audio":27,"../util/rectangle":35,"./environment":5,"./transition":18}],5:[function(require,module,exports){
+},{"../internal/app":17,"../internal/util/json":22,"../internal/util/xml":24,"../system/audio":25,"../util/rectangle":34,"./transition":16}],2:[function(require,module,exports){
+var app_1 = require('../internal/app');
+var Channel = (function () {
+    /** Channel constructor (only used internally) */
+    function Channel(props) {
+        this._name = props.name;
+        this._stat = props.stat;
+        this._channel = props.channel;
+    }
+    /**
+     *  return: Promise<Channel[]>
+     *
+     *  Gets the list of currently active channels.
+     */
+    Channel.getActiveStreamChannels = function () {
+        return new Promise(function (resolve) {
+            app_1.App.getAsList('recstat').then(function (activeStreams) {
+                if (activeStreams.length === 0) {
+                    resolve([]);
+                }
+                else {
+                    var channels = [];
+                    for (var i = 0; i < activeStreams.length; ++i) {
+                        channels.push(new Channel({
+                            name: activeStreams[i]['name'],
+                            stat: activeStreams[i].children[0],
+                            channel: activeStreams[i].children[1]
+                        }));
+                    }
+                    resolve(channels);
+                }
+            });
+        });
+    };
+    /**
+     *  return: Promise<string>
+     *
+     *  Gets the name of the channel.
+     */
+    Channel.prototype.getName = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            resolve(_this._name);
+        });
+    };
+    /**
+     * return: Promise<number>
+     *
+     * Gets the number of frames dropped */
+    Channel.prototype.getStreamDrops = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            app_1.App.get('streamdrops:' + _this._name).then(function (val) {
+                var drops = val.split(','), dropped = Number(drops[0]) || 0;
+                resolve(dropped);
+            });
+        });
+    };
+    /**
+     * return: Promise<number>
+     *
+     * Gets the number of frames rendered  */
+    Channel.prototype.getStreamRenderedFrames = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            app_1.App.get('streamdrops:' + _this._name).then(function (val) {
+                var drops = val.split(','), rendered = Number(drops[1]) || 0;
+                resolve(rendered);
+            });
+        });
+    };
+    /**
+     * return: Promise<number>
+     *
+     * Gets the current duration of the stream in microseconds  */
+    Channel.prototype.getStreamTime = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            app_1.App.get('streamtime:' + _this._name).then(function (val) {
+                var duration = Number(val) / 10;
+                resolve(duration);
+            });
+        });
+    };
+    return Channel;
+})();
+exports.Channel = Channel;
+},{"../internal/app":17}],3:[function(require,module,exports){
 /**
  * This class allows detection of the context in which the HTML is located.
  */
@@ -873,7 +681,7 @@ var Environment = (function () {
 })();
 exports.Environment = Environment;
 Environment.initialize();
-},{}],6:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -889,6 +697,11 @@ var environment_1 = require('../environment');
 /**
  * The AudioItem class represents an audio device that has been added
  * to the stage.
+ *
+ * Inherits from: {@link #core/Item Core/Item}
+ *
+ *  All methods marked as *Chainable* resolve with the original `AudioItem`
+ *  instance.
  */
 var AudioItem = (function (_super) {
     __extends(AudioItem, _super);
@@ -996,7 +809,7 @@ var AudioItem = (function (_super) {
 })(item_2.Item);
 exports.AudioItem = AudioItem;
 mixin_1.applyMixins(item_2.Item, [iaudio_1.ItemAudio]);
-},{"../../internal/item":23,"../../internal/util/mixin":25,"../environment":5,"./iaudio":10,"./item":15}],7:[function(require,module,exports){
+},{"../../internal/item":21,"../../internal/util/mixin":23,"../environment":3,"./iaudio":8,"./item":13}],5:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -1017,6 +830,8 @@ var item_2 = require('./item');
  * {@link #core/Scene Scene} class' getItems method would automatically return a
  * CameraItem object if there's a camera item on the specified scene.
  *
+ * Inherits from: {@link #core/Item Core/Item}
+ *
  * ### Basic Usage
  *
  * ```javascript
@@ -1035,6 +850,9 @@ var item_2 = require('./item');
  *   });
  * });
  * ```
+ *
+ *  All methods marked as *Chainable* resolve with the original `CameraItem`
+ *  instance.
  */
 var CameraItem = (function (_super) {
     __extends(CameraItem, _super);
@@ -1044,7 +862,7 @@ var CameraItem = (function (_super) {
     /**
      * return: Promise<string>
      *
-     * Gets the device ID of the underlying camera deviec.
+     * Gets the device ID of the underlying camera device.
      */
     CameraItem.prototype.getDeviceId = function () {
         var _this = this;
@@ -1061,6 +879,8 @@ var CameraItem = (function (_super) {
      *
      * Set this to true to share color settings across all instances of this
      * camera device on the stage.
+     *
+     * *Chainable.*
      */
     CameraItem.prototype.setColorOptionsPinned = function (value) {
         var _this = this;
@@ -1088,10 +908,12 @@ var CameraItem = (function (_super) {
     };
     // special chroma options pinning
     /**
-     * param: value<boolean>
+     * param: (value: boolean)
      *
      * Set this to true to share chroma keying settings across all instances of
      * this camera device on the stage.
+     *
+     * *Chainable.*
      */
     CameraItem.prototype.setKeyingOptionsPinned = function (value) {
         var _this = this;
@@ -1103,7 +925,7 @@ var CameraItem = (function (_super) {
         });
     };
     /**
-     * return: value<boolean>
+     * return: Promise<boolean>
      *
      * Checks whether chroma keying settings are shared across all instances of
      * this camera device on the stage.
@@ -1121,7 +943,7 @@ var CameraItem = (function (_super) {
 })(item_2.Item);
 exports.CameraItem = CameraItem;
 mixin_1.applyMixins(CameraItem, [ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition]);
-},{"../../internal/item":23,"../../internal/util/mixin":25,"./ichroma":11,"./icolor":12,"./ilayout":14,"./item":15,"./itransition":16}],8:[function(require,module,exports){
+},{"../../internal/item":21,"../../internal/util/mixin":23,"./ichroma":9,"./icolor":10,"./ilayout":12,"./item":13,"./itransition":14}],6:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -1146,6 +968,8 @@ var environment_1 = require('../environment');
  * {@link #core/Scene Scene} class' getItems method would automatically return a
  * GameItem object if there's a game item on the specified scene.
  *
+ * Inherits from: {@link #core/Item Core/Item}
+ *
  * ### Basic Usage
  *
  * ```javascript
@@ -1162,6 +986,9 @@ var environment_1 = require('../environment');
  *   });
  * });
  * ```
+ *
+ *  All methods marked as *Chainable* resolve with the original `GameItem`
+ *  instance.
  */
 var GameItem = (function (_super) {
     __extends(GameItem, _super);
@@ -1186,6 +1013,8 @@ var GameItem = (function (_super) {
      * param: Promise<boolean>
      *
      * Set Game Special Optimization to on or off
+     *
+     * *Chainable.*
      */
     GameItem.prototype.setSpecialOptimizationEnabled = function (value) {
         var _this = this;
@@ -1214,6 +1043,8 @@ var GameItem = (function (_super) {
      * param: value<boolean>
      *
      * Set Show Mouse in game to on or off
+     *
+     * *Chainable.*
      */
     GameItem.prototype.setShowMouseEnabled = function (value) {
         var _this = this;
@@ -1228,6 +1059,8 @@ var GameItem = (function (_super) {
      * param: path<string>
      *
      * Set the offline image of a game source
+     *
+     * *Chainable.*
      */
     GameItem.prototype.setOfflineImage = function (path) {
         var _this = this;
@@ -1281,7 +1114,7 @@ var GameItem = (function (_super) {
 })(item_2.Item);
 exports.GameItem = GameItem;
 mixin_1.applyMixins(GameItem, [ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition]);
-},{"../../internal/item":23,"../../internal/util/json":24,"../../internal/util/mixin":25,"../../internal/util/xml":26,"../environment":5,"./ichroma":11,"./icolor":12,"./ilayout":14,"./item":15,"./itransition":16}],9:[function(require,module,exports){
+},{"../../internal/item":21,"../../internal/util/json":22,"../../internal/util/mixin":23,"../../internal/util/xml":24,"../environment":3,"./ichroma":9,"./icolor":10,"./ilayout":12,"./item":13,"./itransition":14}],7:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -1289,6 +1122,7 @@ var __extends = (this && this.__extends) || function (d, b) {
     __.prototype = b.prototype;
     d.prototype = new __();
 };
+var internal_1 = require('../../internal/internal');
 var mixin_1 = require('../../internal/util/mixin');
 var item_1 = require('../../internal/item');
 var ilayout_1 = require('./ilayout');
@@ -1297,20 +1131,48 @@ var ichroma_1 = require('./ichroma');
 var itransition_1 = require('./itransition');
 var iconfig_1 = require('./iconfig');
 var item_2 = require('./item');
+var rectangle_1 = require('../../util/rectangle');
+var environment_1 = require('../environment');
+/**
+ * The HTMLItem class represents a web page source. This covers both source
+ * plugins and non-plugin URLs.
+ *
+ * Inherits from: {@link #core/Item Core/Item}
+ *
+ *  All methods marked as *Chainable* resolve with the original `HTMLItem`
+ *  instance.
+ */
 var HTMLItem = (function (_super) {
     __extends(HTMLItem, _super);
     function HTMLItem() {
         _super.apply(this, arguments);
     }
+    /**
+     * return: Promise<string>
+     *
+     * Gets the URL of this webpage source.
+     */
     HTMLItem.prototype.getURL = function () {
         var _this = this;
         return new Promise(function (resolve) {
             var slot = item_1.Item.attach(_this._id);
             item_1.Item.get('prop:item', slot).then(function (url) {
+                var _url = String(url).split('*');
+                url = _url[0];
                 resolve(url);
             });
         });
     };
+    /**
+     * param: (url: string)
+     * ```
+     * return: Promise<HTMLItem>
+     * ```
+     *
+     * Sets the URL of this webpage source.
+     *
+     * *Chainable.*
+     */
     HTMLItem.prototype.setURL = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
@@ -1325,11 +1187,468 @@ var HTMLItem = (function (_super) {
             });
         });
     };
+    /**
+     * return: Promise<string>
+     *
+     * Gets the javascript commands to be executed on source upon load
+     */
+    HTMLItem.prototype.getBrowserJS = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            var slot = item_1.Item.attach(_this._id);
+            item_1.Item.get('prop:custom', slot).then(function (custom) {
+                var customJS = '';
+                try {
+                    var customObject = JSON.parse(custom);
+                    if (customObject.hasOwnProperty('customJS')) {
+                        customJS = customObject['customJS'];
+                    }
+                }
+                catch (e) {
+                }
+                resolve(customJS);
+            });
+        });
+    };
+    /**
+     * param: (js: string, refresh: boolean = false)
+     * ```
+     * return: Promise<HTMLItem>
+     * ```
+     *
+     * Sets the javascript commands to be executed on source
+     * right upon setting and on load. Optionally set second parameter
+     * to true to refresh source (needed to clean previously executed JS code.)
+     *
+     * *Chainable.*
+     */
+    HTMLItem.prototype.setBrowserJS = function (value, refresh) {
+        var _this = this;
+        if (refresh === void 0) { refresh = false; }
+        return new Promise(function (resolve, reject) {
+            var slot = item_1.Item.attach(_this._id);
+            var customObject = {};
+            item_1.Item.get('prop:custom', slot).then(function (custom) {
+                var customJS = '';
+                var customCSS = '';
+                var scriptString = ' ';
+                var scriptEnabled = true;
+                var cssEnabled = true;
+                try {
+                    customObject = JSON.parse(custom);
+                    if (customObject.hasOwnProperty('cssEnabled')) {
+                        cssEnabled = (customObject['cssEnabled'] == 'true');
+                    }
+                    if (customObject.hasOwnProperty('scriptEnabled')) {
+                        scriptEnabled = (customObject['scriptEnabled'] == 'true');
+                    }
+                    if (customObject.hasOwnProperty('customCSS')) {
+                        customCSS = customObject['customCSS'];
+                    }
+                }
+                catch (e) {
+                }
+                customObject['cssEnabled'] = cssEnabled.toString();
+                customObject['scriptEnabled'] = scriptEnabled.toString();
+                customObject['customCSS'] = customCSS;
+                customObject['customJS'] = value;
+                if (cssEnabled === true) {
+                    var cssScript = "var xjsCSSOverwrite = document.createElement('style');xjsCSSOverwrite.id = 'splitmedialabsCSSOverwrite';xjsCSSOverwrite.type = 'text/css';var h = document.querySelector('head');var existing = document.querySelector('head #splitmedialabsCSSOverwrite');if (existing != null)h.removeChild(existing);xjsCSSOverwrite.innerHTML = '" + customCSS.replace(/(\r\n|\n|\r)/gm, '').replace(/\s{2,}/g, ' ').replace(/(\[br\])/gm, '') + "';h.appendChild(xjsCSSOverwrite);";
+                    scriptString = scriptString + cssScript;
+                }
+                if (value !== '' && scriptEnabled === true) {
+                    scriptString = scriptString + value;
+                }
+                return item_1.Item.set('prop:BrowserJs', scriptString, slot);
+            })
+                .then(function () {
+                return item_1.Item.set('prop:custom', JSON.stringify(customObject), slot);
+            })
+                .then(function () {
+                if (refresh) {
+                    item_1.Item.set('refresh', '', slot).then(function () {
+                        resolve(this);
+                    });
+                }
+                else {
+                    resolve(this);
+                }
+            });
+        });
+    };
+    /**
+     * return: Promise<boolean>
+     *
+     * Gets if BrowserJS is enabled and executed on load
+     */
+    HTMLItem.prototype.isBrowserJSEnabled = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            var slot = item_1.Item.attach(_this._id);
+            item_1.Item.get('prop:custom', slot).then(function (custom) {
+                var enabled = true;
+                try {
+                    var customObject = JSON.parse(custom);
+                    if (customObject.hasOwnProperty('scriptEnabled')) {
+                        enabled = (customObject['scriptEnabled'] == 'true');
+                    }
+                }
+                catch (e) {
+                }
+                resolve(enabled);
+            });
+        });
+    };
+    /**
+     * param: value<string>
+     * ```
+     * return: Promise<HTMLItem>
+     * ```
+     *
+     * Enables or disables execution of the set BrowserJs upon load.
+     * Note that disabling this will require source to be refreshed
+     * in order to remove any BrowserJS previously executed.
+     *
+     * *Chainable.*
+     */
+    HTMLItem.prototype.enableBrowserJS = function (value) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var slot = item_1.Item.attach(_this._id);
+            var customObject = {};
+            item_1.Item.get('prop:custom', slot).then(function (custom) {
+                var customJS = '';
+                var customCSS = '';
+                var scriptString = ' ';
+                var scriptEnabled = true;
+                var cssEnabled = true;
+                try {
+                    customObject = JSON.parse(custom);
+                    if (customObject.hasOwnProperty('cssEnabled')) {
+                        cssEnabled = (customObject['cssEnabled'] == 'true');
+                    }
+                    if (customObject.hasOwnProperty('customJS')) {
+                        customJS = customObject['customJS'];
+                    }
+                    if (customObject.hasOwnProperty('customCSS')) {
+                        customCSS = customObject['customCSS'];
+                    }
+                }
+                catch (e) {
+                }
+                customObject['cssEnabled'] = cssEnabled.toString();
+                customObject['scriptEnabled'] = value.toString();
+                customObject['customJS'] = customJS;
+                customObject['customCSS'] = customCSS;
+                if (cssEnabled === true) {
+                    var cssScript = 'var xjsCSSOverwrite = document.createElement("style");' +
+                        'xjsCSSOverwrite.id = "splitmedialabsCSSOverwrite";' +
+                        'xjsCSSOverwrite.type = "text/css";' +
+                        'var h = document.querySelector("head");' +
+                        'var existing = document' +
+                        '.querySelector("head #splitmedialabsCSSOverwrite");' +
+                        'if (existing != null)h.removeChild(existing);' +
+                        'xjsCSSOverwrite.innerHTML = "' +
+                        customCSS.replace(/(\r\n|\n|\r)/gm, '')
+                            .replace(/\s{2,}/g, ' ').replace(/(\[br\])/gm, '') + '";"' +
+                        'h.appendChild(xjsCSSOverwrite);';
+                    scriptString = scriptString + cssScript;
+                }
+                if (customJS !== '' && value === true) {
+                    scriptString = scriptString + customJS;
+                }
+                return item_1.Item.set('prop:BrowserJs', scriptString, slot);
+            })
+                .then(function () {
+                return item_1.Item.set('prop:custom', JSON.stringify(customObject), slot);
+            })
+                .then(function () {
+                if (!value) {
+                    item_1.Item.set('refresh', '', slot).then(function () {
+                        resolve(this);
+                    });
+                }
+                else {
+                    resolve(this);
+                }
+            });
+        });
+    };
+    /**
+     * return: Promise<string>
+     *
+     * Gets the custom CSS applied to the document upon loading
+     */
+    HTMLItem.prototype.getCustomCSS = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            var slot = item_1.Item.attach(_this._id);
+            item_1.Item.get('prop:custom', slot).then(function (custom) {
+                var customCSS = '';
+                try {
+                    var customObject = JSON.parse(custom);
+                    if (customObject.hasOwnProperty('customCSS')) {
+                        customCSS = customObject['customCSS'];
+                    }
+                }
+                catch (e) {
+                }
+                resolve(customCSS);
+            });
+        });
+    };
+    /**
+     * param: value<string>
+     * ```
+     * return: Promise<HTMLItem>
+     * ```
+     *
+     * Sets the custom CSS to be applied to the document upon loading
+     *
+     * *Chainable.*
+     */
+    HTMLItem.prototype.setCustomCSS = function (value) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var slot = item_1.Item.attach(_this._id);
+            var customObject = {};
+            item_1.Item.get('prop:custom', slot).then(function (custom) {
+                var customJS = '';
+                var customCSS = '';
+                var scriptString = ' ';
+                var scriptEnabled = true;
+                var cssEnabled = true;
+                try {
+                    customObject = JSON.parse(custom);
+                    if (customObject.hasOwnProperty('cssEnabled')) {
+                        cssEnabled = (customObject['cssEnabled'] == 'true');
+                    }
+                    if (customObject.hasOwnProperty('scriptEnabled')) {
+                        scriptEnabled = (customObject['scriptEnabled'] == 'true');
+                    }
+                    if (customObject.hasOwnProperty('customJS')) {
+                        customJS = customObject['customJS'];
+                    }
+                }
+                catch (e) {
+                }
+                customObject['cssEnabled'] = cssEnabled.toString();
+                customObject['scriptEnabled'] = scriptEnabled.toString();
+                customObject['customJS'] = customJS;
+                customObject['customCSS'] = value;
+                if (cssEnabled === true) {
+                    var cssScript = 'var xjsCSSOverwrite = document.createElement("style");' +
+                        'xjsCSSOverwrite.id = "splitmedialabsCSSOverwrite";' +
+                        'xjsCSSOverwrite.type = "text/css";' +
+                        'var h = document.querySelector("head");' +
+                        'var existing = document' +
+                        '.querySelector("head #splitmedialabsCSSOverwrite");' +
+                        'if (existing != null)h.removeChild(existing);' +
+                        'xjsCSSOverwrite.innerHTML = "' +
+                        value.replace(/(\r\n|\n|\r)/gm, '')
+                            .replace(/\s{2,}/g, ' ').replace(/(\[br\])/gm, '') +
+                        '";h.appendChild(xjsCSSOverwrite);';
+                    scriptString = scriptString + cssScript;
+                }
+                if (customJS !== '' && scriptEnabled === true) {
+                    scriptString = scriptString + customJS;
+                }
+                return item_1.Item.set('prop:BrowserJs', scriptString, slot);
+            })
+                .then(function () {
+                return item_1.Item.set('prop:custom', JSON.stringify(customObject), slot);
+            })
+                .then(function () {
+                resolve(this);
+            });
+        });
+    };
+    /**
+     * return: Promise<string>
+     *
+     * Gets if custom CSS is enabled and applied to the document on load
+     */
+    HTMLItem.prototype.isCustomCSSEnabled = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            var slot = item_1.Item.attach(_this._id);
+            item_1.Item.get('prop:custom', slot).then(function (custom) {
+                var enabled = true;
+                try {
+                    var customObject = JSON.parse(custom);
+                    if (customObject.hasOwnProperty('cssEnabled')) {
+                        enabled = (customObject['cssEnabled'] == 'true');
+                    }
+                }
+                catch (e) {
+                }
+                resolve(enabled);
+            });
+        });
+    };
+    /**
+     * param: value<string>
+     * ```
+     * return: Promise<HTMLItem>
+     * ```
+     *
+     * Enables or disables application of custom CSS to the document
+     *
+     * *Chainable.*
+     */
+    HTMLItem.prototype.enableCustomCSS = function (value) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var slot = item_1.Item.attach(_this._id);
+            var customObject = {};
+            item_1.Item.get('prop:custom', slot).then(function (custom) {
+                var customJS = '';
+                var customCSS = '';
+                var scriptString = ' ';
+                var scriptEnabled = true;
+                var cssEnabled = true;
+                try {
+                    customObject = JSON.parse(custom);
+                    if (customObject.hasOwnProperty('scriptEnabled')) {
+                        scriptEnabled = (customObject['scriptEnabled'] == 'true');
+                    }
+                    if (customObject.hasOwnProperty('customJS')) {
+                        customJS = customObject['customJS'];
+                    }
+                    if (customObject.hasOwnProperty('customCSS')) {
+                        customCSS = customObject['customCSS'];
+                    }
+                }
+                catch (e) {
+                }
+                customObject['scriptEnabled'] = scriptEnabled.toString();
+                customObject['cssEnabled'] = value.toString();
+                customObject['customJS'] = customJS;
+                customObject['customCSS'] = customCSS;
+                if (value === true) {
+                    var cssScript = 'var xjsCSSOverwrite = document.createElement("style");' +
+                        'xjsCSSOverwrite.id = "splitmedialabsCSSOverwrite";' +
+                        'xjsCSSOverwrite.type = "text/css";' +
+                        'var h = document.querySelector("head");' +
+                        'var existing = document' +
+                        '.querySelector("head #splitmedialabsCSSOverwrite");' +
+                        'if (existing != null)h.removeChild(existing);' +
+                        'xjsCSSOverwrite.innerHTML = "' +
+                        customCSS.replace(/(\r\n|\n|\r)/gm, '')
+                            .replace(/\s{2,}/g, ' ').replace(/(\[br\])/gm, '') +
+                        '";h.appendChild(xjsCSSOverwrite);';
+                    scriptString = scriptString + cssScript;
+                }
+                if (customJS !== '' && value === scriptEnabled) {
+                    scriptString = scriptString + customJS;
+                }
+                return item_1.Item.set('prop:BrowserJs', scriptString, slot);
+            })
+                .then(function () {
+                return item_1.Item.set('prop:custom', JSON.stringify(customObject), slot);
+            })
+                .then(function () {
+                if (!value) {
+                    var cssScript = "var h = document.querySelector('head');var existing3 = document.querySelector('head #splitmedialabsCSSOverwrite');if (existing3 != null)h.removeChild(existing3);";
+                    if (environment_1.Environment.isSourcePlugin()) {
+                        eval(cssScript);
+                    }
+                    else {
+                        internal_1.exec('CallInner', 'eval', cssScript);
+                    }
+                    resolve(this);
+                }
+                else {
+                    resolve(this);
+                }
+            });
+        });
+    };
+    /**
+     * return: Promise<boolean>
+     *
+     * Check if browser is rendered transparent
+     */
+    HTMLItem.prototype.isBrowserTransparent = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            var slot = item_1.Item.attach(_this._id);
+            item_1.Item.get('prop:BrowserTransparent').then(function (isTransparent) {
+                resolve(isTransparent === '1');
+            });
+        });
+    };
+    /**
+     * param: Promise<boolean>
+     * ```
+     * return: Promise<HTMLItem>
+     * ```
+     *
+     * Enable or disabled transparency of CEF browser
+     *
+     * *Chainable.*
+     */
+    HTMLItem.prototype.enableBrowserTransparency = function (value) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            var slot = item_1.Item.attach(_this._id);
+            item_1.Item.set('prop:BrowserTransparent', (value ? '1' : '0'), slot).then(function () {
+                resolve(_this);
+            });
+        });
+    };
+    /**
+     * return: Promise<Rectangle>
+     *
+     * Gets the custom browser window size for the source, if set,
+     * regardless of its layout on the mixer
+     *
+     * See also: {@link #util/Rectangle Util/Rectangle}
+     */
+    HTMLItem.prototype.getBrowserCustomSize = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            var slot = item_1.Item.attach(_this._id);
+            var customSize;
+            item_1.Item.get('prop:BrowserSize', slot).then(function (val) {
+                if (val !== '') {
+                    var _a = decodeURIComponent(val).split(','), width = _a[0], height = _a[1];
+                    customSize = rectangle_1.Rectangle.fromDimensions(Number(width), Number(height));
+                }
+                else {
+                    customSize = rectangle_1.Rectangle.fromDimensions(0, 0);
+                }
+                resolve(customSize);
+            });
+        });
+    };
+    /**
+     * param: Promise<Rectangle>
+     * ```
+     * return: Promise<HTMLItem>
+     * ```
+     *
+     * Sets the custom browser window size for the source
+     * regardless of its layout on the mixer
+     *
+     * *Chainable.*
+     *
+     * See also: {@link #util/Rectangle Util/Rectangle}
+     */
+    HTMLItem.prototype.setBrowserCustomSize = function (value) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            var slot = item_1.Item.attach(_this._id);
+            item_1.Item.set('prop:BrowserSize', value.toDimensionString(), slot).then(function () {
+                resolve(_this);
+            });
+        });
+    };
     return HTMLItem;
 })(item_2.Item);
 exports.HTMLItem = HTMLItem;
 mixin_1.applyMixins(HTMLItem, [ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition, iconfig_1.ItemConfigurable]);
-},{"../../internal/item":23,"../../internal/util/mixin":25,"./ichroma":11,"./icolor":12,"./iconfig":13,"./ilayout":14,"./item":15,"./itransition":16}],10:[function(require,module,exports){
+},{"../../internal/internal":20,"../../internal/item":21,"../../internal/util/mixin":23,"../../util/rectangle":34,"../environment":3,"./ichroma":9,"./icolor":10,"./iconfig":11,"./ilayout":12,"./item":13,"./itransition":14}],8:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var environment_1 = require('../environment');
@@ -1452,22 +1771,46 @@ var ItemAudio = (function () {
     return ItemAudio;
 })();
 exports.ItemAudio = ItemAudio;
-},{"../../internal/item":23,"../environment":5}],11:[function(require,module,exports){
+},{"../../internal/item":21,"../environment":3}],9:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var color_1 = require('../../util/color');
+/**
+ *  Used by items that implement the Chroma interface.
+ *  Check `getKeyingType()`/`setKeyingType()` method of
+ *  {@link #core/CameraItem Core/CameraItem},
+ *  {@link #core/GameItem Core/GameItem}, and
+ *  {@link #core/HTMLItem Core/HTMLItem}.
+ */
 (function (KeyingType) {
     KeyingType[KeyingType["LEGACY"] = 0] = "LEGACY";
     KeyingType[KeyingType["COLORKEY"] = 1] = "COLORKEY";
     KeyingType[KeyingType["RGBKEY"] = 2] = "RGBKEY"; // Chroma Key RGB Mode
 })(exports.KeyingType || (exports.KeyingType = {}));
 var KeyingType = exports.KeyingType;
+/**
+ *  Used by items that implement the Chroma interface, when using RGB mode
+ *  Chroma Key.
+ *
+ *  Check `getChromaRGBKeyPrimaryColor()`/`setChromaRGBKeyPrimaryColor()` method
+ *  of {@link #core/CameraItem Core/CameraItem},
+ *  {@link #core/GameItem Core/GameItem}, and
+ *  {@link #core/HTMLItem Core/HTMLItem}.
+ */
 (function (ChromaPrimaryColors) {
     ChromaPrimaryColors[ChromaPrimaryColors["RED"] = 0] = "RED";
     ChromaPrimaryColors[ChromaPrimaryColors["GREEN"] = 1] = "GREEN";
     ChromaPrimaryColors[ChromaPrimaryColors["BLUE"] = 2] = "BLUE";
 })(exports.ChromaPrimaryColors || (exports.ChromaPrimaryColors = {}));
 var ChromaPrimaryColors = exports.ChromaPrimaryColors;
+/**
+ *  Used by items that implement the Chroma interface.
+ *
+ *  Check `getChromaAntiAliasLevel()`/`setChromaAntiAliasLevel()` method
+ *  of {@link #core/CameraItem Core/CameraItem},
+ *  {@link #core/GameItem Core/GameItem}, and
+ *  {@link #core/HTMLItem Core/HTMLItem}.
+ */
 (function (ChromaAntiAliasLevel) {
     ChromaAntiAliasLevel[ChromaAntiAliasLevel["NONE"] = 0] = "NONE";
     ChromaAntiAliasLevel[ChromaAntiAliasLevel["LOW"] = 1] = "LOW";
@@ -1526,7 +1869,6 @@ var ItemChroma = (function () {
             }
         });
     };
-    // COMMON TO CHROMA LEGACY AND CHROMA RGB KEY
     ItemChroma.prototype.getChromaAntiAliasLevel = function () {
         var _this = this;
         return new Promise(function (resolve) {
@@ -1841,7 +2183,7 @@ var ItemChroma = (function () {
     return ItemChroma;
 })();
 exports.ItemChroma = ItemChroma;
-},{"../../internal/item":23,"../../util/color":32}],12:[function(require,module,exports){
+},{"../../internal/item":21,"../../util/color":30}],10:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var color_1 = require('../../util/color');
@@ -1986,7 +2328,7 @@ var ItemColor = (function () {
     return ItemColor;
 })();
 exports.ItemColor = ItemColor;
-},{"../../internal/item":23,"../../util/color":32}],13:[function(require,module,exports){
+},{"../../internal/item":21,"../../util/color":30}],11:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var global_1 = require('../../internal/global');
@@ -2071,7 +2413,7 @@ var ItemConfigurable = (function () {
     return ItemConfigurable;
 })();
 exports.ItemConfigurable = ItemConfigurable;
-},{"../../internal/global":20,"../../internal/internal":22,"../../internal/item":23,"../environment":5}],14:[function(require,module,exports){
+},{"../../internal/global":18,"../../internal/internal":20,"../../internal/item":21,"../environment":3}],12:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var rectangle_1 = require('../../util/rectangle');
@@ -2225,13 +2567,15 @@ var ItemLayout = (function () {
     return ItemLayout;
 })();
 exports.ItemLayout = ItemLayout;
-},{"../../internal/item":23,"../../util/rectangle":35}],15:[function(require,module,exports){
+},{"../../internal/item":21,"../../util/rectangle":34}],13:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
+var mixin_1 = require('../../internal/util/mixin');
 var item_1 = require('../../internal/item');
 var environment_1 = require('../environment');
 var json_1 = require('../../internal/util/json');
 var xml_1 = require('../../internal/util/xml');
 var scene_1 = require('../scene');
+var ilayout_1 = require('./ilayout');
 (function (ItemTypes) {
     ItemTypes[ItemTypes["UNDEFINED"] = 0] = "UNDEFINED";
     ItemTypes[ItemTypes["FILE"] = 1] = "FILE";
@@ -2245,8 +2589,42 @@ var scene_1 = require('../scene');
 })(exports.ItemTypes || (exports.ItemTypes = {}));
 var ItemTypes = exports.ItemTypes;
 /**
- * An Item represents an object that is used as a source on the stage.
+ * An `Item` represents an object that is used as a source on the stage.
  * Some possible sources are games, microphones, or a webpage.
+ *
+ * ### Basic Usage
+ *
+ * ```javascript
+ * var xjs = require('xjs');
+ * var Scene = xjs.Scene.getById(0);
+ *
+ * Scene.getItems().then(function(items) {
+ *   if (items.length === 0) return;
+ *
+ *   // There's a valid item, let's use that
+ *   var item = items[items.length - 1];
+ *   return item.setCustomName('ItemTesting');
+ * }).then(function(item) {
+ *   // Do something else here
+ * });
+ * ```
+ * All methods marked as *Chainable* resolve with the original `Item` instance.
+ * This allows you to perform sequential operations correctly:
+ * ```javascript
+ * var xjs = require('xjs');
+ * var Item = xjs.Item;
+ *
+ * // a source that sets its own properties on load
+ * xjs.ready()
+ *    .then(Item.getCurrentSource)
+ *    .then(function(item) {
+ *     return item.setCustomName('MyCustomName');
+ *  }).then(function(item) {
+ *     return item.setKeepLoaded(true);
+ *  }).then(function(item) {
+ *     // set more properties here
+ *  });
+ * ```
  */
 var Item = (function () {
     function Item(props) {
@@ -2260,7 +2638,27 @@ var Item = (function () {
         this._type = Number(props['type']);
         this._xmlparams = props;
     }
-    /** Sets the name of the item */
+    /**
+     * param: (value: string)
+     * ```
+     * return: Promise<Item>
+     * ```
+     *
+     * Sets the name of the item.
+     *
+     * *Chainable.*
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.setName('newNameHere').then(function(item) {
+     *   // Promise resolves with same Item instance when name has been set
+     *   return item.getName();
+     * }).then(function(name) {
+     *   // 'name' should be the updated value by now.
+     * });
+     * ```
+     */
     Item.prototype.setName = function (value) {
         var _this = this;
         return new Promise(function (resolve) {
@@ -2271,7 +2669,19 @@ var Item = (function () {
             });
         });
     };
-    /** Gets the current name of the item */
+    /**
+     * return: Promise<string>
+     *
+     * Gets the name of the item.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.getName().then(function(name) {
+     *   // Do something with the name
+     * });
+     * ```
+     */
     Item.prototype.getName = function () {
         var _this = this;
         return new Promise(function (resolve) {
@@ -2282,7 +2692,31 @@ var Item = (function () {
             });
         });
     };
-    /** Sets the custom name of the item */
+    /**
+     * param: (value: string)
+     * ```
+     * return: Promise<Item>
+     * ```
+     *
+     * Sets the custom name of the item.
+     *
+     * The main difference between `setName` and `setCustomName` is that the CustomName
+     * can be edited by users using XBC through the bottom panel. `setName` on
+     * the other hand would update the item's internal name property.
+     *
+     * *Chainable.*
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.setCustomName('newNameHere').then(function(item) {
+     *   // Promise resolves with same Item instance when custom name has been set
+     *   return item.getCustomName();
+     * }).then(function(name) {
+     *   // 'name' should be the updated value by now.
+     * });
+     * ```
+     */
     Item.prototype.setCustomName = function (value) {
         var _this = this;
         return new Promise(function (resolve) {
@@ -2293,7 +2727,19 @@ var Item = (function () {
             });
         });
     };
-    /** Gets the custom name of the item */
+    /**
+     * return: Promise<string>
+     *
+     * Gets the custom name of the item.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.getCustomName().then(function(name) {
+     *   // Do something with the name
+     * });
+     * ```
+     */
     Item.prototype.getCustomName = function () {
         var _this = this;
         return new Promise(function (resolve) {
@@ -2304,7 +2750,23 @@ var Item = (function () {
             });
         });
     };
-    /** Get the video item's main definition */
+    /**
+     * return: Promise<string|XML>
+     *
+     * Gets the custom name of the item.
+     *
+     * This method can resolve with an XML object, which is an object generated by
+     * the framework. Call `toString()` to transform into an XML String. (See the
+     * documentation for `setValue` for more details.)
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.getCustomName().then(function(name) {
+     *   // Do something with the name
+     * });
+     * ```
+     */
     Item.prototype.getValue = function () {
         var _this = this;
         return new Promise(function (resolve) {
@@ -2329,7 +2791,38 @@ var Item = (function () {
             });
         });
     };
-    /** Set the video item's main definition */
+    /**
+     * param: (value: string)
+     * ```
+     * return: Promise<Item>
+     * ```
+     *
+     * Set the video item's main definition.
+     *
+     * *Chainable.*
+     *
+     * **WARNING:**
+     * Please do note that using this method COULD break the current item, possibly modifying
+     * its type IF you set an invalid string for the current item.
+     *
+     * #### Possible values by item type
+     * - FILE - path/URL
+     * - LIVE - Device ID
+     * - BITMAP - path
+     * - SCREEN - XML string
+     * - FLASHFILE - path
+     * - GAMESOURCE - XML string
+     * - HTML - path/URL or html:<plugin>
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.setValue('@DEVICE:PNP:\\?\USB#VID_046D&amp;PID_082C&amp;MI_02#6&amp;16FD2F8D&amp;0&amp;0002#{65E8773D-8F56-11D0-A3B9-00A0C9223196}\GLOBAL')
+     *   .then(function(item) {
+     *   // Promise resolves with same Item instance
+     * });
+     * ```
+     */
     Item.prototype.setValue = function (value) {
         var _this = this;
         return new Promise(function (resolve) {
@@ -2347,7 +2840,19 @@ var Item = (function () {
             });
         });
     };
-    /** Check if item is kept loaded in memory */
+    /**
+     * return: Promise<boolean>
+     *
+     * Check if item is kept loaded in memory
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.getKeepLoaded().then(function(isLoaded) {
+     *   // The rest of your code here
+     * });
+     * ```
+     */
     Item.prototype.getKeepLoaded = function () {
         var _this = this;
         return new Promise(function (resolve) {
@@ -2358,7 +2863,24 @@ var Item = (function () {
             });
         });
     };
-    /** Set Keep loaded option to ON or OFF */
+    /**
+     * param: (value: boolean)
+     * ```
+     * return: Promise<Item>
+     * ```
+     *
+     * Set Keep loaded option to ON or OFF
+     *
+     * *Chainable.*
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.setKeepLoaded(true).then(function(item) {
+     *   // Promise resolves with same Item instance
+     * });
+     * ```
+     */
     Item.prototype.setKeepLoaded = function (value) {
         var _this = this;
         return new Promise(function (resolve) {
@@ -2370,7 +2892,19 @@ var Item = (function () {
             });
         });
     };
-    /** Get the type of the item */
+    /**
+     * return: Promise<ItemTypes>
+     *
+     * Get the type of the item
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.getType().then(function(type) {
+     *   // The rest of your code here
+     * });
+     * ```
+     */
     Item.prototype.getType = function () {
         var _this = this;
         return new Promise(function (resolve) {
@@ -2381,21 +2915,56 @@ var Item = (function () {
             });
         });
     };
-    /** Get the ID of the item */
+    /**
+     * return: Promise<string>
+     *
+     * Get the ID of the item
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.getID().then(function(id) {
+     *   // The rest of your code here
+     * });
+     * ```
+     */
     Item.prototype.getID = function () {
         var _this = this;
         return new Promise(function (resolve) {
             resolve(_this._id);
         });
     };
-    /** Get (1-indexed) Scene ID where the item is loaded */
+    /**
+     * return: Promise<number>
+     *
+     * Get (1-indexed) Scene ID where the item is loaded
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * item.getSceneID().then(function(id) {
+     *   // The rest of your code here
+     * });
+     * ```
+     */
     Item.prototype.getSceneID = function () {
         var _this = this;
         return new Promise(function (resolve) {
             resolve(Number(_this._sceneID) + 1);
         });
     };
-    /** Convert the Item object to an XML string */
+    /**
+     * return: XML
+     *
+     * Convert the Item object to an XML object. Use `toString()` to
+     * get the string version of the returned object.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * var xml = item.toXML();
+     * ```
+     */
     Item.prototype.toXML = function () {
         var item = new json_1.JSON();
         item['tag'] = 'item';
@@ -2408,9 +2977,24 @@ var Item = (function () {
         }
         return xml_1.XML.parseJSON(item);
     };
-    /** Get the current source (when function is called by sources), or the source
+    /**
+     * return: Promise<Item>
+     *
+     * Get the current source (when function is called by sources), or the source
      * that was right-clicked to open the config window (when function is called
-     * from the config window) */
+     * from the config window)
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * xjs.Item.getCurrentSource().then(function(item) {
+     *   // This will fetch the current item (the plugin)
+     * }).catch(function(err) {
+     *   // Handle the error here. Errors would only occur
+     *   // if we try to execute this method on Extension plugins
+     * });
+     * ```
+     */
     Item.getCurrentSource = function () {
         return new Promise(function (resolve, reject) {
             if (environment_1.Environment.isExtension()) {
@@ -2427,7 +3011,8 @@ var Item = (function () {
     return Item;
 })();
 exports.Item = Item;
-},{"../../internal/item":23,"../../internal/util/json":24,"../../internal/util/xml":26,"../environment":5,"../scene":17}],16:[function(require,module,exports){
+mixin_1.applyMixins(Item, [ilayout_1.ItemLayout]);
+},{"../../internal/item":21,"../../internal/util/json":22,"../../internal/util/mixin":23,"../../internal/util/xml":24,"../environment":3,"../scene":15,"./ilayout":12}],14:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var transition_1 = require('../transition');
@@ -2501,7 +3086,7 @@ var ItemTransition = (function () {
     return ItemTransition;
 })();
 exports.ItemTransition = ItemTransition;
-},{"../../internal/item":23,"../transition":18}],17:[function(require,module,exports){
+},{"../../internal/item":21,"../transition":16}],15:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
@@ -2630,7 +3215,9 @@ var Scene = (function () {
             else {
                 if (scene instanceof Scene) {
                     scene.getID().then(function (id) {
-                        app_1.App.set('preset', String(id));
+                        app_1.App.set('preset', String(id)).then(function (res) {
+                            resolve(res);
+                        });
                     });
                 }
                 else if (typeof scene === 'number') {
@@ -2650,13 +3237,11 @@ var Scene = (function () {
         });
     };
     /**
+     * return: Promise<Item>
      *
      * Searches all scenes for an item by ID. ID search will return exactly 1 result (IDs are unique) or null.
-     * See also: Core/Item
-     * #Return
-     * ```
-     * Item
-     * ```
+     *
+     * See also: @{link #core/Item Core/Item}
      *
      * #### Usage
      *
@@ -2911,7 +3496,7 @@ var Scene = (function () {
      * return: Promise<Item[]>
      *
      * Gets all the items (sources) in a specific scene.
-     * See also: Core/Item
+     * See also: @{link #core/Item Core/Item}
      *
      * #### Usage
      *
@@ -2968,7 +3553,7 @@ var Scene = (function () {
      * ```javascript
      * myScene.isEmpty().then(function(empty) {
      *   if (empty === true) {
-     *     console.log("My scene is empty.");
+     *     console.log('My scene is empty.');
      *   }
      * });
      * ```
@@ -2982,12 +3567,13 @@ var Scene = (function () {
         });
     };
     /**
-     * param: Array<Item> | Array<string>
+     * param: Array<Item> | Array<string> (item IDs)
      * ```
      * return: Promise<Scene>
      * ```
      *
-     * Sets the item order of the current scene. It is ordered as bottom to top.
+     * Sets the item order of the current scene. The first item in the array will
+     * be on top (will cover items below it).
      */
     Scene.prototype.setItemOrder = function (items) {
         var _this = this;
@@ -2996,22 +3582,27 @@ var Scene = (function () {
                 reject(Error('not available for source plugins'));
             }
             else {
+                items.reverse();
                 var ids = [];
                 Scene.getActiveScene().then(function (scene) {
                     if (items.every(function (el) { return el instanceof item_1.Item; })) {
                         return new Promise(function (resolve) {
+                            var promises = [];
                             for (var i in items) {
-                                (function (_i) {
-                                    items[_i].getID().then(function (id) {
-                                        ids[_i] = id;
-                                        if (ids.length === items.length) {
-                                            scene.getSceneNumber().then(function (id) {
-                                                resolve(id);
-                                            });
-                                        }
+                                promises.push((function (_i) {
+                                    return new Promise(function (resolve) {
+                                        items[_i].getID().then(function (id) {
+                                            ids[_i] = id;
+                                            resolve(_this);
+                                        });
                                     });
-                                })(i);
+                                })(i));
                             }
+                            Promise.all(promises).then(function () {
+                                return scene.getSceneNumber();
+                            }).then(function (id) {
+                                resolve(id);
+                            });
                         });
                     }
                     else {
@@ -3034,14 +3625,22 @@ var Scene = (function () {
                             newOrder['tag'] = 'placement';
                             newOrder['name'] = sceneName;
                             if (Array.isArray(jsonArr)) {
+                                var attrs = ['name', 'cname', 'item'];
                                 for (var i = 0; i < jsonArr.length; i++) {
-                                    jsonArr[i]['name'] = jsonArr[i]['name']
-                                        .replace(/([^\\])(\\)([^\\])/g, '$1\\\\$3');
-                                    jsonArr[i]['item'] = jsonArr[i]['item']
-                                        .replace(/([^\\])(\\)([^\\])/g, '$1\\\\$3');
+                                    for (var a = 0; a < attrs.length; a++) {
+                                        jsonArr[i][attrs[a]] = jsonArr[i][attrs[a]]
+                                            .replace(/([^\\])(\\)([^\\])/g, '$1\\\\$3');
+                                        jsonArr[i][attrs[a]] = jsonArr[i][attrs[a]]
+                                            .replace(/"/g, '&quot;');
+                                    }
                                     newOrder.children[ids.indexOf(jsonArr[i]['id'])] = jsonArr[i];
                                 }
-                                app_1.App.set('presetconfig:' + _this._id, xml_1.XML.parseJSON(newOrder).toString());
+                                app_1.App.set('presetconfig:' + _this._id, xml_1.XML.parseJSON(newOrder).toString()).then(function () {
+                                    resolve(_this);
+                                });
+                            }
+                            else {
+                                reject(Error('Scene does not have any items'));
                             }
                         });
                     }
@@ -3054,15 +3653,18 @@ var Scene = (function () {
     return Scene;
 })();
 exports.Scene = Scene;
-},{"../internal/app":19,"../internal/internal":22,"../internal/util/json":24,"../internal/util/xml":26,"./environment":5,"./item/audio":6,"./item/camera":7,"./item/game":8,"./item/html":9,"./item/item":15}],18:[function(require,module,exports){
+},{"../internal/app":17,"../internal/internal":20,"../internal/util/json":22,"../internal/util/xml":24,"./environment":3,"./item/audio":4,"./item/camera":5,"./item/game":6,"./item/html":7,"./item/item":13}],16:[function(require,module,exports){
 /**
  * The Transition class represents a preset transition within XSplit Broadcaster.
  * This may be used to set the application's transition scheme when switching scenes,
  * or to set an individual source's transition when its visibility changes.
  *
  * Simply use one of the available Transition objects such as Transition.FAN or
- * Transition.COLLAPSE as the parameter to the setTransition method of an App
- * or Item instance.
+ * Transition.COLLAPSE as the parameter to the `setTransition()` method of an
+ * App instance, or a valid Item instance that supports transitions (this
+ * includes {@link #core/CameraItem Core/CameraItem},
+ * {@link #core/GameItem Core/GameItem}, and
+ * {@link #core/HTMLItem Core/HTMLItem}.)
  */
 var Transition = (function () {
     function Transition(key) {
@@ -3112,7 +3714,7 @@ var Transition = (function () {
     return Transition;
 })();
 exports.Transition = Transition;
-},{}],19:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var internal_1 = require('./internal');
 var json_1 = require('./util/json');
@@ -3187,7 +3789,7 @@ var App = (function () {
     return App;
 })();
 exports.App = App;
-},{"./internal":22,"./util/json":24}],20:[function(require,module,exports){
+},{"./internal":20,"./util/json":22}],18:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var Global = (function () {
     function Global() {
@@ -3209,14 +3811,13 @@ var Global = (function () {
     return Global;
 })();
 exports.Global = Global;
-},{}],21:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var environment_1 = require('../core/environment');
 var item_1 = require('./item');
 var internal_1 = require('./internal');
 var global_1 = require('./global');
-var config_1 = require('../context/config');
-require('../util/ready');
+var config_1 = require('../window/config');
 function resolveRelativePath(path, base) {
     // ABSOLUTE PATHS
     if (path.substring(0, 7) === 'http://' ||
@@ -3261,7 +3862,7 @@ function readMetaConfigUrl() {
             catch (e) {
             }
             finally {
-                var metas = document.getElementsByTagName("meta");
+                var metas = document.getElementsByTagName('meta');
                 for (var i = metas.length - 1; i >= 0; i--) {
                     if (metas[i].name === 'xsplit:config-url') {
                         var url = resolveRelativePath(metas[i].content, window.location.href);
@@ -3324,7 +3925,7 @@ function init() {
     });
 }
 init();
-},{"../context/config":1,"../core/environment":5,"../util/ready":34,"./global":20,"./internal":22,"./item":23}],22:[function(require,module,exports){
+},{"../core/environment":3,"../window/config":35,"./global":18,"./internal":20,"./item":21}],20:[function(require,module,exports){
 /// <reference path="../../defs/window.d.ts" />
 exports.DEBUG = false;
 var _callbacks = {};
@@ -3369,22 +3970,7 @@ window.OnAsyncCallback = function (asyncID, result) {
         callback.call(this, decodeURIComponent(result));
     }
 };
-window.OnSceneLoad = function (view, scene) {
-    document.dispatchEvent(new CustomEvent('scene-load', { detail: { view: view, scene: scene } }));
-};
-window.SetConfiguration = function (config) {
-    document.dispatchEvent(new CustomEvent('set-configuration', { config: config }));
-};
-window.SetBackGroundColor = function (color) {
-    document.dispatchEvent(new CustomEvent('set-background-color', { color: color }));
-};
-window.SetVolume = function (volume) {
-    document.dispatchEvent(new CustomEvent('set-volume', { volume: volume }));
-};
-window.OnDialogResult = function (result) {
-    document.dispatchEvent(new CustomEvent('dialog-result', { detail: { result: result } }));
-};
-},{}],23:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var internal_1 = require('./internal');
 var environment_1 = require('../core/environment');
@@ -3462,7 +4048,7 @@ var Item = (function () {
     return Item;
 })();
 exports.Item = Item;
-},{"../core/environment":5,"./internal":22}],24:[function(require,module,exports){
+},{"../core/environment":3,"./internal":20}],22:[function(require,module,exports){
 var xml_1 = require('./xml');
 var JSON = (function () {
     function JSON(xml) {
@@ -3532,7 +4118,7 @@ var JSON = (function () {
     return JSON;
 })();
 exports.JSON = JSON;
-},{"./xml":26}],25:[function(require,module,exports){
+},{"./xml":24}],23:[function(require,module,exports){
 function applyMixins(derivedCtor, baseCtors) {
     baseCtors.forEach(function (baseCtor) {
         Object.getOwnPropertyNames(baseCtor.prototype).forEach(function (name) {
@@ -3544,7 +4130,7 @@ function applyMixins(derivedCtor, baseCtors) {
     });
 }
 exports.applyMixins = applyMixins;
-},{}],26:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 var XML = (function () {
     function XML(json) {
         var attributes = '';
@@ -3599,7 +4185,7 @@ var XML = (function () {
     return XML;
 })();
 exports.XML = XML;
-},{}],27:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
@@ -3937,10 +4523,11 @@ var AudioDevice = (function () {
     return AudioDevice;
 })();
 exports.AudioDevice = AudioDevice;
-},{"../internal/util/json":24,"../internal/util/xml":26}],28:[function(require,module,exports){
+},{"../internal/util/json":22,"../internal/util/xml":24}],26:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
+var app_1 = require('../internal/app');
 /**
  * The CameraDevice Class is the object returned by
  * {@link #system/System System Class'} getCameraDevices method. It provides
@@ -4036,10 +4623,21 @@ var CameraDevice = (function () {
         });
         return cam;
     };
+    /**
+     *  Adds this camera device to the current scene.
+     */
+    CameraDevice.prototype.addToScene = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            app_1.App.callFunc('addcamera', 'dev:' + _this._id).then(function () {
+                resolve(true);
+            });
+        });
+    };
     return CameraDevice;
 })();
 exports.CameraDevice = CameraDevice;
-},{"../internal/util/json":24,"../internal/util/xml":26}],29:[function(require,module,exports){
+},{"../internal/app":17,"../internal/util/json":22,"../internal/util/xml":24}],27:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var rectangle_1 = require('../util/rectangle');
 var json_1 = require('../internal/util/json');
@@ -4279,6 +4877,9 @@ var Game = (function () {
         gamesource['selfclosing'] = true;
         return xml_1.XML.parseJSON(gamesource);
     };
+    /**
+     *  Adds this game to the current scene.
+     */
     Game.prototype.addToScene = function () {
         var _this = this;
         return new Promise(function (resolve) {
@@ -4290,7 +4891,7 @@ var Game = (function () {
     return Game;
 })();
 exports.Game = Game;
-},{"../internal/app":19,"../internal/util/json":24,"../internal/util/xml":26,"../util/rectangle":35}],30:[function(require,module,exports){
+},{"../internal/app":17,"../internal/util/json":22,"../internal/util/xml":24,"../util/rectangle":34}],28:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
@@ -4324,6 +4925,9 @@ var MicrophoneDevice = (function () {
         microphone['selfclosing'] = true;
         return xml_1.XML.parseJSON(microphone);
     };
+    /**
+     *  Adds this microphone device to the current scene.
+     */
     MicrophoneDevice.prototype.addToScene = function () {
         var _this = this;
         return new Promise(function (resolve) {
@@ -4335,7 +4939,7 @@ var MicrophoneDevice = (function () {
     return MicrophoneDevice;
 })();
 exports.MicrophoneDevice = MicrophoneDevice;
-},{"../internal/app":19,"../internal/util/json":24,"../internal/util/xml":26}],31:[function(require,module,exports){
+},{"../internal/app":17,"../internal/util/json":22,"../internal/util/xml":24}],29:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var app_1 = require('../internal/app');
 var audio_1 = require('./audio');
@@ -4404,7 +5008,7 @@ var System = (function () {
      * return: Promise<AudioDevice[]>
      *
      * Gets audio devices, both input and output
-     * See also: System/AudioDevice
+     * See also: @{link #system/AudioDevice System/AudioDevice}
      *
      * #### Usage
      *
@@ -4452,7 +5056,7 @@ var System = (function () {
      * return: Promise<CameraDevice[]>
      *
      * Gets all camera devices
-     * See also: System/CameraDevice
+     * See also: @{link #system/CameraDevice System/CameraDevice}
      *
      * #### Usage
      *
@@ -4472,8 +5076,8 @@ var System = (function () {
                         var device = devicesJSON[_i];
                         if (String(device['disp']).toLowerCase().indexOf('xsplit') === -1 &&
                             String(device['disp']).toLowerCase() !==
-                                ("@DEVICE:SW:{860BB310-5D01-11D0-BD3B-00A0C911CE86}\\" +
-                                    "{778abfb2-e87b-48a2-8d33-675150fcf8a2}").toLowerCase()) {
+                                ('@DEVICE:SW:{860BB310-5D01-11D0-BD3B-00A0C911CE86}\\' +
+                                    '{778abfb2-e87b-48a2-8d33-675150fcf8a2}').toLowerCase()) {
                             devices.push(camera_1.CameraDevice.parse(device));
                         }
                     }
@@ -4486,7 +5090,7 @@ var System = (function () {
      * return: Promise<Game[]>
      *
      * Gets all currently running games
-     * See also: System/Game
+     * See also: @{link #system/Game System/Game}
      *
      * #### Usage
      *
@@ -4515,7 +5119,7 @@ var System = (function () {
      * return: Promise<MicrophoneDevice[]>
      *
      * Gets all audio capture devices that may be added to the stage
-     * See also: System/MicrophoneDevice
+     * See also: @{link #system/MicrophoneDevice System/MicrophoneDevice}
      *
      * #### Usage
      *
@@ -4601,7 +5205,7 @@ var System = (function () {
     return System;
 })();
 exports.System = System;
-},{"../core/environment":5,"../internal/app":19,"../internal/internal":22,"./audio":27,"./camera":28,"./game":29,"./microphone":30}],32:[function(require,module,exports){
+},{"../core/environment":3,"../internal/app":17,"../internal/internal":20,"./audio":25,"./camera":26,"./game":27,"./microphone":28}],30:[function(require,module,exports){
 var Color = (function () {
     function Color(props) {
         if (props['rgb'] !== undefined) {
@@ -4677,13 +5281,48 @@ var Color = (function () {
     return Color;
 })();
 exports.Color = Color;
-},{}],33:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
+// simple event emitter
+var EventEmitter = (function () {
+    function EventEmitter() {
+        this._handlers = {};
+    }
+    /** This function attaches a handler to an event. Duplicate handlers are allowed. */
+    EventEmitter.prototype.on = function (event, handler) {
+        if (this._handlers[event] === undefined) {
+            this._handlers[event] = [];
+        }
+        this._handlers[event].push(handler);
+    };
+    /** This function lets an event trigger with any number of supplied parameters. */
+    EventEmitter.prototype.emit = function (event) {
+        var params = [];
+        for (var _i = 1; _i < arguments.length; _i++) {
+            params[_i - 1] = arguments[_i];
+        }
+        if (this._handlers[event] === undefined) {
+            return;
+        }
+        for (var _a = 0, _b = this._handlers[event]; _a < _b.length; _a++) {
+            var handler = _b[_a];
+            handler.apply(this, params);
+        }
+    };
+    return EventEmitter;
+})();
+exports.EventEmitter = EventEmitter;
+},{}],32:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var internal_1 = require('../internal/internal');
 var IO = (function () {
     function IO() {
     }
     /**
+     * param: (path: string)
+     * ```
+     * return: Promise<string>
+     * ```
+     *
      * Returns a base-64 encoded string of the target file's contents.
      * UTF-8 encoded files may be decoded through:
      * ```javascript
@@ -4696,6 +5335,11 @@ var IO = (function () {
         });
     };
     /**
+     * param: (url: string)
+     * ```
+     * return: Promise<string>
+     * ```
+     *
      * Returns a base-64 encoded string of the target endpoint's contents.
      * Redirects are resolved, and this bypasses access-control-allow-origin.
      *
@@ -4711,15 +5355,22 @@ var IO = (function () {
             });
         });
     };
-    /** Opens a URL in the user's default browser. URLs need to
+    /**
+     * param: (url: string)
+     *
+     * Opens a URL in the user's default browser. URL must specify HTTP or HTTPS.
      *
      */
     IO.openUrl = function (url) {
         internal_1.exec('OpenUrl', url);
     };
     /**
+     * param: ([options] [, filter]) -- see below
+     * ```
+     * return: Promise<string[]>
+     * ```
      * Opens a file dialog for the user to select a file (or multiple files).
-     * Returns an array of strings, each of which contains the full path
+     * Resolves with an array of strings, each of which contains the full path
      * and filename of a selected file. Rejects when the dialog is canceled.
      *
      * The first (optional) argument is a JSON object that can be used to indicate
@@ -4758,7 +5409,7 @@ var IO = (function () {
                 filterString += '||';
             }
             internal_1.exec('OpenFileDialogAsync', null, null, String(flags), filterString, function (path) {
-                if (path !== "null") {
+                if (path !== 'null') {
                     resolve(path.split('|'));
                 }
                 else {
@@ -4773,7 +5424,7 @@ var IO = (function () {
     return IO;
 })();
 exports.IO = IO;
-},{"../internal/internal":22}],34:[function(require,module,exports){
+},{"../internal/internal":20}],33:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var isReady = false;
 var readyPromise = new Promise(function (resolve) {
@@ -4792,7 +5443,7 @@ function setReady() {
     isReady = true;
 }
 exports.setReady = setReady;
-},{}],35:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 var Rectangle = (function () {
     function Rectangle() {
     }
@@ -4950,7 +5601,516 @@ var Rectangle = (function () {
     return Rectangle;
 })();
 exports.Rectangle = Rectangle;
-},{}],"xjs":[function(require,module,exports){
+},{}],35:[function(require,module,exports){
+/// <reference path="../../defs/es6-promise.d.ts" />
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var eventemitter_1 = require('../util/eventemitter');
+var internal_1 = require('../internal/internal');
+/** This utility class exposes functionality for source plugin developers to
+ *  handle the configuration window for their source plugins. The framework also
+ *  uses this class for its own internal purposes.
+ *
+ *  Developers can use this class to specify how their configuration HTML
+ *  should be rendered within the built-in window in XSplit Broadcaster.
+ *  This class also serves as an event emitter for specific important events.
+ *
+ * Inherits from: {@link #util/EventEmitter Util/EventEmitter}
+ *
+ *  At the moment, the only relevant event for developers is:
+ *    - `set-selected-tab`: used when using Tabbed mode. Passes the name of the selected tab so configuration window can update itself accordingly.
+ *
+ *  Use the `on(event: string, handler: Function)` function to listen to an event.
+ */
+var SourceConfigWindow = (function (_super) {
+    __extends(SourceConfigWindow, _super);
+    /**
+     *  Use getInstance() instead.
+     */
+    function SourceConfigWindow() {
+        var _this = this;
+        _super.call(this);
+        window.addEventListener('message', function (event) {
+            try {
+                var data = JSON.parse(event.data);
+            }
+            catch (e) {
+                // syntax error probably happened, exit gracefully
+                return;
+            }
+            switch (data.event) {
+                // currently, restrict messages to selected set
+                case 'set-selected-tab':
+                    this.emit(data.event, data.value);
+                    break;
+                case 'async-callback':
+                    this.emit(data.event, {
+                        asyncId: data.value.asyncId,
+                        result: data.value.result
+                    });
+                    break;
+            }
+        }.bind(this));
+        this.on('config-load', function () {
+            _this._informConfigLoaded();
+        });
+        SourceConfigWindow._instance = this;
+    }
+    /**
+     *  Gets the instance of the window utility. Use this instead of the constructor.
+     */
+    SourceConfigWindow.getInstance = function () {
+        if (SourceConfigWindow._instance === undefined) {
+            SourceConfigWindow._instance = new SourceConfigWindow();
+        }
+        return SourceConfigWindow._instance;
+    };
+    // helper function to communicate with built-in container
+    SourceConfigWindow.prototype._notify = function (obj) {
+        window.parent.postMessage(JSON.stringify(obj), '*');
+    };
+    /**
+     *  Informs the application that the plugin intends to use the entire
+     *  window for rendering its configuration.
+     */
+    SourceConfigWindow.prototype.useFullWindow = function () {
+        this._setRenderMode(SourceConfigWindow._MODE_FULL);
+        // use default size to avoid layout issues. plugin can resize later
+        this.resizeConfig(354, 390);
+    };
+    /**
+     *  param: ({customTabs: string[], tabOrder: string[]})
+     *
+     *  Informs the application that the plugin intends to use the existing tab
+     *  system to render its configuration window.
+     *
+     *  The `customTabs` node should contain a list of tab titles that the plugin
+     *  will create for itself.
+     *
+     *  The `tabOrder` node contains the desired order of tabs. This list comes
+     *  from the specified custom tabs, and the set of reusable XSplit tabs:
+     *  'Color', 'Layout' and 'Transition'.
+     */
+    SourceConfigWindow.prototype.useTabbedWindow = function (config) {
+        this._setRenderMode(SourceConfigWindow._MODE_TABBED);
+        this._declareCustomTabs(config.customTabs);
+        this._setTabOrder(config.tabOrder);
+    };
+    SourceConfigWindow.prototype._setRenderMode = function (renderMode) {
+        this._mode = renderMode;
+        this._notify({
+            event: 'set-mode',
+            value: renderMode
+        });
+    };
+    ;
+    SourceConfigWindow.prototype._setTabOrder = function (tabArray) {
+        this._notify({
+            event: 'set-tab-order',
+            value: JSON.stringify(tabArray)
+        });
+    };
+    ;
+    SourceConfigWindow.prototype._declareCustomTabs = function (tabArray) {
+        this._notify({
+            event: 'set-custom-tabs',
+            value: JSON.stringify(tabArray)
+        });
+    };
+    ;
+    SourceConfigWindow.prototype._informConfigLoaded = function () {
+        this._notify({ event: 'load' });
+    };
+    /**
+     *  param: width<number>, height<number>
+     *
+     *  Resizes the configuration window. Currently only works when using full
+     *  window mode.
+     */
+    SourceConfigWindow.prototype.resizeConfig = function (width, height) {
+        this._notify({
+            event: 'resize',
+            value: JSON.stringify({
+                width: width,
+                height: height
+            })
+        });
+    };
+    ;
+    /** Closes the configuration window. */
+    SourceConfigWindow.prototype.closeConfig = function () {
+        internal_1.exec('Close');
+    };
+    ;
+    SourceConfigWindow._MODE_FULL = 'full';
+    SourceConfigWindow._MODE_TABBED = 'embedded';
+    return SourceConfigWindow;
+})(eventemitter_1.EventEmitter);
+exports.SourceConfigWindow = SourceConfigWindow;
+},{"../internal/internal":20,"../util/eventemitter":31}],36:[function(require,module,exports){
+/// <reference path="../../defs/es6-promise.d.ts" />
+var rectangle_1 = require('../util/rectangle');
+var environment_1 = require('../core/environment');
+var internal_1 = require('../internal/internal');
+/**
+ *  This class is used to spawn new browser processes that can be used to open
+ *  other URLS. Source plugins do not have this functionality (but their
+ *  configuration windows may use this.)
+ *
+ *  Note that opening a new dialog replaces the old one.
+ *
+ *  Most of the methods are chainable.
+ *
+ *  Sample usage:
+ *
+ *  ```javascript
+ *  var xjs = require('xjs');
+ *  var Dialog = xjs.Dialog;
+ *
+ *  xjs.ready().then(function() {
+ *    var button = document.getElementById('openDialogButton');
+ *    button.addEventListener('click', function() {
+ *      xjs.Dialog.createDialog('your.url/here.html')
+ *      .setSize(500, 800)
+ *      .setTitle('ThisDialogReturnsAString')
+ *      .setBorderOptions(true, false)
+ *      .setButtons(true, true)
+ *      .show()
+ *      .getResult().then(function(result) {
+ *        document.getElementById('input').value = result;
+ *      });
+ *    });
+ *  });
+ *
+ *  // in the opened dialog, simply call
+ *  // Dialog.return('returnedStringValue');
+ *  // to return a value
+ *  ```
+ */
+var Dialog = (function () {
+    function Dialog() {
+        if (environment_1.Environment.isSourcePlugin()) {
+            throw new Error('Dialogs are not available for source plugins.');
+        }
+        else {
+            return this;
+        }
+    }
+    /**
+     *  param: (url: string)
+     *
+     *  return: Dialog
+     *
+     *  Creates a Dialog object pointing to a URL. Call the other methods to
+     *  modify the dialog's properties, and `show()` to spawn the dialog.
+     *
+     * *Chainable.*
+     */
+    Dialog.createDialog = function (url) {
+        var dialog = new Dialog();
+        dialog._url = url;
+        return dialog;
+    };
+    /**
+     *  param: (url: string)
+     *
+     *  return: Dialog
+     *
+     *  Creates a Dialog object pointing to a URL, that autocloses on an outside
+     *  click. AutoDialogs only have access to the `setSize` and `show` methods.
+     *
+     * *Chainable.*
+     */
+    Dialog.createAutoDialog = function (url) {
+        var dialog = new Dialog();
+        dialog._url = url;
+        dialog._autoclose = true;
+        return dialog;
+    };
+    /**
+     *  param: (result: string)
+     *
+     *  Closes this dialog with an optional string result. (Call this from the
+     *  dialog.)
+     */
+    Dialog.return = function (result) {
+        if (result !== undefined) {
+            internal_1.exec('SetDialogResult', result);
+        }
+        internal_1.exec('Close');
+    };
+    /**
+     *  param: (width: number, height: number)
+     *
+     *  return: Dialog
+     *
+     *  Sets the size of the dialog to be displayed.
+     *
+     * *Chainable.*
+     */
+    Dialog.prototype.setSize = function (width, height) {
+        if (width === void 0) { width = 300; }
+        if (height === void 0) { height = 300; }
+        this._size = rectangle_1.Rectangle.fromDimensions(width, height);
+        return this;
+    };
+    /**
+     *  param: (title: string)
+     *
+     *  return: Dialog
+     *
+     *  Sets the title of the dialog to be displayed.
+     *
+     * *Chainable.*
+     */
+    Dialog.prototype.setTitle = function (title) {
+        if (this._autoclose) {
+            throw new Error('Autoclosing dialogs cannot use this method.');
+        }
+        this._title = title;
+        return this;
+    };
+    /**
+     *  param: (showBorder: boolean, resizable: boolean)
+     *
+     *  return: Dialog
+     *
+     *  Specifies the border and resizable flags for the dialog to be displayed.
+     *
+     * *Chainable.*
+     */
+    Dialog.prototype.setBorderOptions = function (showBorder, resizable) {
+        if (showBorder === void 0) { showBorder = false; }
+        if (resizable === void 0) { resizable = false; }
+        if (this._autoclose) {
+            throw new Error('Autoclosing dialogs cannot use this method.');
+        }
+        this._showBorder = showBorder;
+        this._resizable = resizable;
+        return this;
+    };
+    /**
+     *  param: (isMinimizeActive: boolean, isMaximizeActive: boolean)
+     *
+     *  return: Dialog
+     *
+     *  Specifies if the window buttons (minimize and maximize) should be active.
+     *
+     * *Chainable.*
+     */
+    Dialog.prototype.setButtons = function (isMinimizeActive, isMaximizeActive) {
+        if (isMinimizeActive === void 0) { isMinimizeActive = false; }
+        if (isMaximizeActive === void 0) { isMaximizeActive = false; }
+        if (this._autoclose) {
+            throw new Error('Autoclosing dialogs cannot use this method.');
+        }
+        this._minimize = isMinimizeActive;
+        this._maximize = isMaximizeActive;
+        return this;
+    };
+    /**
+     *  return: Dialog
+     *
+     *  After configuring the dialog, call this function to spawn it.
+     *
+     * *Chainable.*
+     */
+    Dialog.prototype.show = function () {
+        if (this._autoclose) {
+            internal_1.exec('NewAutoDialog', this._url, '', this._size === undefined ?
+                undefined : (this._size.getWidth() + ',' + this._size.getHeight()));
+        }
+        else {
+            internal_1.exec('NewDialog', this._url, '', this._size === undefined ?
+                undefined : (this._size.getWidth() + ',' + this._size.getHeight()), this._calculateFlags(), this._title);
+        }
+        return this;
+    };
+    /**
+     *  return: Promise<string>
+     *
+     *  Gets the string result returned from the spawned dialog.
+     */
+    Dialog.prototype.getResult = function () {
+        return new Promise(function (resolve) {
+            var eventListener = function (e) {
+                // self-deleting event listener
+                e.target.removeEventListener(e.type, eventListener);
+                resolve(e.detail);
+            };
+            document.addEventListener('xsplit-dialog-result', eventListener);
+        });
+    };
+    /**
+     *  Closes the dialog that this window spawned.
+     */
+    Dialog.prototype.close = function () {
+        internal_1.exec('CloseDialog');
+    };
+    Dialog.prototype._calculateFlags = function () {
+        var flags = 0;
+        if (this._showBorder) {
+            flags += 1;
+        }
+        if (this._resizable) {
+            flags += 4;
+        }
+        if (this._minimize) {
+            flags += 8;
+        }
+        if (this._maximize) {
+            flags += 16;
+        }
+        if (this._title || this._minimize || this._maximize) {
+            flags += 2;
+        }
+        return String(flags);
+    };
+    return Dialog;
+})();
+exports.Dialog = Dialog;
+if (environment_1.Environment.isSourceConfig() || environment_1.Environment.isExtension()) {
+    window.OnDialogResult = function (result) {
+        document.dispatchEvent(new CustomEvent('xsplit-dialog-result', {
+            detail: result }));
+    };
+}
+},{"../core/environment":3,"../internal/internal":20,"../util/rectangle":34}],37:[function(require,module,exports){
+/// <reference path="../../defs/es6-promise.d.ts" />
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var environment_1 = require('../core/environment');
+var eventemitter_1 = require('../util/eventemitter');
+var app_1 = require('../internal/app');
+var _RESIZE = '2';
+/** This utility class represents the extension window. It allows manipulation
+ *  of the window (e.g., resizing), and also serves as an event emitter
+ *  for all events that the window should be able to handle.
+ *
+ *  Currently, only the following event is available:
+ *    - `scene-load`: notifies in the event of a scene change. Handler is a function f(sceneNumber: number)
+ *
+ *  Use the `on(event: string, handler: Function)` function to listen to an event.
+ *
+ */
+var ExtensionWindow = (function (_super) {
+    __extends(ExtensionWindow, _super);
+    /**
+     *  Use getInstance() instead.
+     */
+    function ExtensionWindow() {
+        _super.call(this);
+        ExtensionWindow._instance = this;
+    }
+    /**
+     *  Gets the instance of the window utility. Use this instead of the constructor.
+     */
+    ExtensionWindow.getInstance = function () {
+        if (ExtensionWindow._instance === undefined) {
+            ExtensionWindow._instance = new ExtensionWindow();
+        }
+        return ExtensionWindow._instance;
+    };
+    /** param: (width: number, height: number)
+     *
+     *  Resizes this extension's window.
+     */
+    ExtensionWindow.prototype.resize = function (width, height) {
+        app_1.App.postMessage(_RESIZE, String(width), String(height));
+    };
+    return ExtensionWindow;
+})(eventemitter_1.EventEmitter);
+exports.ExtensionWindow = ExtensionWindow;
+if (environment_1.Environment.isExtension()) {
+    window.OnSceneLoad = function (view, scene) {
+        if (Number(view) === 0) {
+            ExtensionWindow.getInstance().emit('scene-load', Number(scene));
+        }
+    };
+}
+},{"../core/environment":3,"../internal/app":17,"../util/eventemitter":31}],38:[function(require,module,exports){
+/// <reference path="../../defs/es6-promise.d.ts" />
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var environment_1 = require('../core/environment');
+var eventemitter_1 = require('../util/eventemitter');
+/** This utility class is used internally by the framework for certain important
+ *  processes. This class also exposes certain important events that the source
+ *  plugin may emit.
+ *
+ * Inherits from: {@link #util/EventEmitter Util/EventEmitter}
+ *
+ *  Currently there are only two events:
+ *    - `save-config`: signals the source that it should save the configuration object. Handler is a function f(config: JSON)
+ *    - `apply-config`: signals the source that it should apply the changes that this configuration object describes. Handler is a function f(config: JSON)
+ *    - `set-background-color`: only used when the native Color tab is reused and background color is set. Handler is a function f(colorHexNoNumberSign: string)
+ *
+ *  Use the `on(event: string, handler: Function)` function to listen to an event.
+ */
+var SourcePluginWindow = (function (_super) {
+    __extends(SourcePluginWindow, _super);
+    /**
+     *  Use getInstance() instead.
+     */
+    function SourcePluginWindow() {
+        _super.call(this);
+        this.on('message-source', function (message) {
+            if (message.request !== undefined) {
+                if (message.request === 'saveConfig') {
+                    this.emit('save-config', message.data);
+                }
+                else if (message.request === 'applyConfig') {
+                    this.emit('apply-config', message.data);
+                }
+            }
+        });
+        SourcePluginWindow._instance = this;
+    }
+    /**
+     *  Gets the instance of the window utility. Use this instead of the constructor.
+     */
+    SourcePluginWindow.getInstance = function () {
+        if (SourcePluginWindow._instance === undefined) {
+            SourcePluginWindow._instance = new SourcePluginWindow();
+        }
+        return SourcePluginWindow._instance;
+    };
+    return SourcePluginWindow;
+})(eventemitter_1.EventEmitter);
+exports.SourcePluginWindow = SourcePluginWindow;
+if (environment_1.Environment.isSourcePlugin()) {
+    window.MessageSource = function (message) {
+        SourcePluginWindow.getInstance().emit('message-source', JSON.parse(message));
+    };
+    window.SetConfiguration = function (configObj) {
+        try {
+            var data = JSON.parse(configObj);
+            var source = SourcePluginWindow.getInstance();
+            source.emit('apply-config', data);
+            source.emit('save-config', data);
+        }
+        catch (e) {
+            // syntax error probably happened, exit gracefully
+            return;
+        }
+    };
+    window.setBackGroundColor = function (color) {
+        SourcePluginWindow.getInstance().emit('set-background-color', color);
+    };
+}
+},{"../core/environment":3,"../util/eventemitter":31}],"xjs":[function(require,module,exports){
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
 }
@@ -4960,6 +6120,7 @@ __export(require('./util/rectangle'));
 __export(require('./util/io'));
 __export(require('./core/environment'));
 __export(require('./core/app'));
+__export(require('./core/channel'));
 __export(require('./core/scene'));
 __export(require('./core/transition'));
 __export(require('./core/item/item'));
@@ -4967,13 +6128,19 @@ __export(require('./core/item/camera'));
 __export(require('./core/item/game'));
 __export(require('./core/item/audio'));
 __export(require('./core/item/html'));
+var ichroma_1 = require('./core/item/ichroma');
+exports.KeyingType = ichroma_1.KeyingType;
+exports.ChromaPrimaryColors = ichroma_1.ChromaPrimaryColors;
+exports.ChromaAntiAliasLevel = ichroma_1.ChromaAntiAliasLevel;
 __export(require('./system/system'));
 __export(require('./system/audio'));
 __export(require('./system/game'));
 __export(require('./system/camera'));
 __export(require('./system/microphone'));
-__export(require('./context/config'));
-__export(require('./context/source'));
+__export(require('./window/config'));
+__export(require('./window/source'));
+__export(require('./window/extension'));
+__export(require('./window/dialog'));
 var ready_1 = require('./util/ready');
 exports.ready = ready_1.ready;
-},{"./context/config":1,"./context/source":3,"./core/app":4,"./core/environment":5,"./core/item/audio":6,"./core/item/camera":7,"./core/item/game":8,"./core/item/html":9,"./core/item/item":15,"./core/scene":17,"./core/transition":18,"./internal/init":21,"./system/audio":27,"./system/camera":28,"./system/game":29,"./system/microphone":30,"./system/system":31,"./util/color":32,"./util/io":33,"./util/ready":34,"./util/rectangle":35}]},{},["xjs"]);
+},{"./core/app":1,"./core/channel":2,"./core/environment":3,"./core/item/audio":4,"./core/item/camera":5,"./core/item/game":6,"./core/item/html":7,"./core/item/ichroma":9,"./core/item/item":13,"./core/scene":15,"./core/transition":16,"./internal/init":19,"./system/audio":25,"./system/camera":26,"./system/game":27,"./system/microphone":28,"./system/system":29,"./util/color":30,"./util/io":32,"./util/ready":33,"./util/rectangle":34,"./window/config":35,"./window/dialog":36,"./window/extension":37,"./window/source":38}]},{},["xjs"]);

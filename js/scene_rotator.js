@@ -17,6 +17,8 @@
       ready: function() {
         this.lastIndex = 0;
         this.sceneChangeTimeout = null;
+        this.populateScenes();
+        xjs.ExtensionWindow.getInstance().resize(390, 450);
       },
 
       changeScene: function() {
@@ -87,6 +89,45 @@
         btn.textContent = (this.isRunning ? "Start" : "Stop") +
         " Script";
         this.isRunning = !this.isRunning;
+      },
+
+      populateScenes: function() {
+        Scene.initializeScenes();
+
+        // var list = [];
+        var dropdown = this.$.sceneSelect;
+
+        var sceneNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        var promises = sceneNumbers.map(function(number) {
+          return new Promise(function(resolve) {
+            Scene.getById(number).getName().then(function(name) {
+              // list.push({ id: number, name: name});
+              var option = document.createElement('xui-option');
+              option.value = number;
+              option.textContent = name;
+              resolve(option);
+            });
+          });
+        });
+
+        Promise.all(promises).then(function(options) {
+          // dropdown.optionlist = list;
+          // dropdown.value = 0;
+          for (var option in options) {
+            dropdown.appendChild(options[option]);
+            dropdown.value = "0";
+          }
+        });
+      },
+
+      addScene: function() {
+        // get selected scene
+        var selectedScene = {
+          id: this.$.sceneSelect.selected.value,
+          name: this.$.sceneSelect.selected.textContent
+        };
+
+        this.$.sceneList.optionlist.push(selectedScene);
       }
     };
 

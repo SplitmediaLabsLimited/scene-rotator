@@ -24,7 +24,7 @@
 <body>
 	<polymer-element name="scene-rotator">
 		<template>
-			<link rel="stylesheet" href="./css/scene_rotator.css" />
+			<link rel="stylesheet" href="./css/scene_rotator.css" /> 
 			<div id="windowContainer">
 				<div id="windowHeader">
 						<span id="indicator">INACTIVE</span>
@@ -37,9 +37,13 @@
 					<br/>
 					<xui-input id="rotationInterval" type="number" min="0" value="5"></xui-input>
 					<br/>
-					<label>Scenes to rotate (comma-separated, ordered as per rotation sequence)</label>
-					<br/>
-					<xui-input id="inputScenes" ></xui-input>					
+					<label>Rotation List</label>
+
+					<div id="wrap">
+						<xui-select id="sceneSelect" optionlist="{{ optionlist }}"></xui-select>
+						<xui-button id="addScene" on-click="{{ addScene }}">Add</xui-button>
+					</div>
+					<xui-listbox id="sceneList"></xui-listbox>
 				</div>
 			</div>
 		</template>
