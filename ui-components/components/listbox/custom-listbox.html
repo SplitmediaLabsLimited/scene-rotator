@@ -1,0 +1,17 @@
+<polymer-element name="xui-custom-listbox" constructor="XUICustomListBox">
+
+    <template>
+        <link rel="stylesheet" href="css/listbox.css" />
+        <link rel="stylesheet" href="css/custom-listbox.css" />
+
+        <label for="dropdown" id="label">{{ label }}</label>
+        <div id="options">
+            <template repeat="{{ option in optionlist }}">
+                <a href="#" id="{{ option.id }}" value="{{ option.id }}" class="{{ itemclass }}" on-click="{{ selectOptions }}">{{ option.name }}<span class="remove" on-click="{{ removeOption }}">x</span></a>
+            </template>
+        </div>
+        <content></content>
+    </template>
+
+    <script src="js/custom-listbox.js"></script>
+</polymer-element>

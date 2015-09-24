@@ -79,7 +79,7 @@ xui-button /deep/ button
     min-width: 0;
 }
 
-xui-listbox
+xui-custom-listbox
 {
     width: 350px;
     height: 288px;
