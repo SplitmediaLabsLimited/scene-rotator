@@ -71,3 +71,38 @@ xui-button /deep/ button
     font-size: 14px;
     height: auto;
 }
+
+#addScene /deep/ button
+{
+    height: 26px;
+    width: 83px;
+    min-width: 0;
+}
+
+xui-custom-listbox
+{
+    width: 350px;
+    height: 288px;
+}
+
+xui-select
+{
+    width: 266px;
+}
+
+#addScene
+{
+    margin-left: 5px;
+}
+
+#wrap
+{
+    display: flex;
+    width: 370px;
+    margin-bottom: 5px;
+}
+
+#sceneSelect
+{
+    margin-top: 2px;
+}

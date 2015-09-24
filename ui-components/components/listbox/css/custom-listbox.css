@@ -1,0 +1,11 @@
+#options span.remove
+{
+    float: right;
+    cursor: pointer;
+    line-height: 12px;
+}
+
+#options a:not(:hover) span.remove
+{
+    display: none;
+}

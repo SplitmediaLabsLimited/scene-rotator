@@ -17,19 +17,24 @@
       ready: function() {
         this.lastIndex = 0;
         this.sceneChangeTimeout = null;
+        this.populateScenes();
+        xjs.ExtensionWindow.getInstance().resize(390, 450);
       },
 
       changeScene: function() {
         var _this = this;
-        var sceneArray = _this.$.inputScenes.value.split(",");
+        //var sceneArray = _this.$.inputScenes.value.split(",");
+        var sceneArray = _this.$.sceneList.optionlist.map(function(obj) {
+          return obj.id;
+        });
         var sceneNumber;
         Scene.getActiveScene().then(function(scene) {
           scene.getSceneNumber().then(function(num) {
             sceneNumber = num;
-            var indexOfCurrentScene = sceneArray.indexOf(String(sceneNumber));
+            var indexOfCurrentScene = sceneArray.indexOf(sceneNumber);
 
             if (indexOfCurrentScene >= 0) {
-              if (sceneArray[_this.lastIndex] == String(scene)) {
+              if (sceneArray[_this.lastIndex] == scene) {
                 //
                 var next;
                 if (_this.lastIndex < sceneArray.length - 1) {
@@ -71,8 +76,7 @@
           this.$.indicator.innerHTML = "INACTIVE";
         } else {
           if (_this.$.rotationInterval.value == "" ||
-              _this.$.inputScenes.value == "" ||
-              _this.$.inputScenes.value == undefined) {
+              _this.$.sceneList.optionlist.length === 0) {
             return;
           }
 
@@ -87,6 +91,40 @@
         btn.textContent = (this.isRunning ? "Start" : "Stop") +
         " Script";
         this.isRunning = !this.isRunning;
+      },
+
+      populateScenes: function() {
+        Scene.initializeScenes();
+
+        var dropdown = this.$.sceneSelect;
+
+        var sceneNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        var promises = sceneNumbers.map(function(number) {
+          return new Promise(function(resolve) {
+            Scene.getById(number).getName().then(function(name) {
+              var option = document.createElement('xui-option');
+              option.value = number;
+              option.textContent = name;
+              resolve(option);
+            });
+          });
+        });
+
+        Promise.all(promises).then(function(options) {
+          for (var option in options) {
+            dropdown.appendChild(options[option]);
+            dropdown.value = "0";
+          }
+        });
+      },
+
+      addScene: function() {
+        var selectedScene = {
+          id: this.$.sceneSelect.selected.value,
+          name: this.$.sceneSelect.selected.textContent
+        };
+
+        this.$.sceneList.optionlist.push(selectedScene);
       }
     };
 
