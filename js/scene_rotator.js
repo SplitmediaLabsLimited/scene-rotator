@@ -6,6 +6,7 @@
 
   var xjs = require('xjs');
   var Scene = xjs.Scene;
+  var App = new xjs.App();
   xjs.ready().then(function() {
     function SceneRotator() {}
 
@@ -23,6 +24,20 @@
 
       changeScene: function() {
         var _this = this;
+
+        // check for version here
+        App.getVersion()
+        .then(function(version){
+          var versionArray = version.split('.');
+          var versionNumber = Number(versionArray[0] + '.' + versionArray[1]);
+
+          if (versionNumber > 2.7) {
+            _this.populateScenes();
+          } else {
+            
+          }
+        })
+
         //var sceneArray = _this.$.inputScenes.value.split(",");
         var sceneArray = _this.$.sceneList.optionlist.map(function(obj) {
           return obj.id;
@@ -94,27 +109,34 @@
       },
 
       populateScenes: function() {
-        Scene.initializeScenes();
-
         var dropdown = this.$.sceneSelect;
+        dropdown.innerHTML = '';
 
-        var sceneNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-        var promises = sceneNumbers.map(function(number) {
-          return new Promise(function(resolve) {
-            Scene.getById(number).getName().then(function(name) {
-              var option = document.createElement('xui-option');
-              option.value = number;
-              option.textContent = name;
-              resolve(option);
+        Scene.initializeScenes().then(function(){
+          return Scene.getSceneCount();
+        }).then(function(count){
+          var sceneNumbers = [];
+          for (var i = 0; i < count; i++) {
+            sceneNumbers.push(i + 1);
+          };
+
+          var promises = sceneNumbers.map(function(number) {
+            return new Promise(function(resolve) {
+              Scene.getById(number).getName().then(function(name) {
+                var option = document.createElement('xui-option');
+                option.value = number;
+                option.textContent = name;
+                resolve(option);
+              });
             });
           });
-        });
 
-        Promise.all(promises).then(function(options) {
-          for (var option in options) {
-            dropdown.appendChild(options[option]);
-            dropdown.value = "0";
-          }
+          Promise.all(promises).then(function(options) {
+            for (var option in options) {
+              dropdown.appendChild(options[option]);
+              dropdown.value = "0";
+            }
+          });        
         });
       },
 
