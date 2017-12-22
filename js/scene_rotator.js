@@ -34,7 +34,7 @@
           if (versionNumber > 2.7) {
             _this.populateScenes();
           } else {
-            
+
           }
         })
 
@@ -44,7 +44,7 @@
         });
         var sceneNumber;
         Scene.getActiveScene().then(function(scene) {
-          scene.getSceneNumber().then(function(num) {
+          scene.getSceneIndex().then(function(num) {
             sceneNumber = num;
             var indexOfCurrentScene = sceneArray.indexOf(sceneNumber);
 
@@ -57,8 +57,8 @@
                 } else {
                   next = 0;
                 }
-
-                Scene.setActiveScene(Number(sceneArray[next]));
+                console.log('Switch to::',sceneArray[next])
+                Scene.setActiveScene(Number(sceneArray[next]+1));
                 _this.lastIndex = next;
               } else {
                 var next;
@@ -67,7 +67,8 @@
                 } else {
                   next = 0;
                 }
-                Scene.setActiveScene(Number(sceneArray[next]));
+
+                Scene.setActiveScene(Number(sceneArray[next] + 1));
                 _this.lastIndex = next;
               }
             } else {
@@ -112,32 +113,32 @@
         var dropdown = this.$.sceneSelect;
         dropdown.innerHTML = '';
 
-        Scene.initializeScenes().then(function(){
-          return Scene.getSceneCount();
-        }).then(function(count){
-          var sceneNumbers = [];
-          for (var i = 0; i < count; i++) {
-            sceneNumbers.push(i + 1);
-          };
-
-          var promises = sceneNumbers.map(function(number) {
-            return new Promise(function(resolve) {
-              Scene.getById(number).getName().then(function(name) {
+        Scene.initializeScenes();
+        let countArr = []
+        Scene.getSceneCount().then(count => {
+          for(var i = 0; i < count ; i++){
+            countArr.push(i)
+          }
+          let promises = countArr.map(cnt => {
+            return new Promise(resolve => {
+              Scene.getBySceneIndex(cnt).then(scene => {
+                return scene.getName()
+              }).then(name => {
                 var option = document.createElement('xui-option');
-                option.value = number;
+                option.value = cnt;
                 option.textContent = name;
-                resolve(option);
-              });
-            });
-          });
+                resolve(option)
+              })
+            })
+          })
 
-          Promise.all(promises).then(function(options) {
+          Promise.all(promises).then(options => {
             for (var option in options) {
               dropdown.appendChild(options[option]);
               dropdown.value = "0";
             }
-          });        
-        });
+          })
+        })
       },
 
       addScene: function() {
