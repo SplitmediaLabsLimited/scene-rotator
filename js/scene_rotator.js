@@ -7,6 +7,19 @@
   var xjs = require('xjs');
   var Scene = xjs.Scene;
   var App = new xjs.App();
+
+  // We use this to workaround error in the app method `getVersion` due to change in XBC CEF userAgent
+  var getVersion = function() {
+    let xbcPattern = /(?:XSplit Broadcaster\s|XSplit\sBroadcaster\sPTR\s|XSplitBroadcaster\/|XSplitBroadcasterPTR\/)(.*?)\s/;
+    let xbcMatch = navigator.appVersion.match(xbcPattern);
+
+    if (xbcMatch !== null) {
+      return xbcMatch[1];
+    } else {
+      throw new Error('not loaded in XSplit Broadcaster');
+    }
+  }
+
   xjs.ready().then(function() {
     function SceneRotator() {}
 
@@ -25,18 +38,14 @@
       changeScene: function() {
         var _this = this;
 
-        // check for version here
-        App.getVersion()
-        .then(function(version){
-          var versionArray = version.split('.');
-          var versionNumber = Number(versionArray[0] + '.' + versionArray[1]);
 
-          if (versionNumber > 2.7) {
-            _this.populateScenes();
-          } else {
+        var version = getVersion();
+        var versionArray = version.split('.');
+        var versionNumber = Number(versionArray[0] + '.' + versionArray[1]);
 
-          }
-        })
+        if (versionNumber > 2.7) {
+          _this.populateScenes();
+        }
 
         //var sceneArray = _this.$.inputScenes.value.split(",");
         var sceneArray = _this.$.sceneList.optionlist.map(function(obj) {
