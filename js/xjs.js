@@ -1,10 +1,10 @@
 /**
  * XSplit JS Framework
- * version: 2.6.0
+ * version: 2.10.2
  *
  * XSplit Extensibility Framework and Plugin License
  *
- * Copyright (c) 2015, SplitmediaLabs Limited
+ * Copyright (c) 2020, SplitmediaLabs Limited
  * All rights reserved.
  *
  * Redistribution and use in source, minified or binary forms, with or without
@@ -53,6 +53,15 @@ var transition_1 = require('./transition');
 var version_1 = require('../internal/util/version');
 var DEFAULT_SILENCE_DETECTION_THRESHOLD = 5;
 var DEFAULT_SILENCE_DETECTION_PERIOD = 1000;
+var arrayToObj = function (array, separator) {
+    var obj = {};
+    array.map(function (el) {
+        var separatorIndex = el.indexOf(separator);
+        var key = el.substring(0, separatorIndex);
+        obj[key] = el.substring(separatorIndex + 1);
+    });
+    return obj;
+};
 /**
  * The App Class provides you methods to get and set application-related
  * functionalities.
@@ -876,6 +885,51 @@ var App = (function () {
             });
         });
     };
+    /**
+     * return: Promise<boolean>
+     *
+     * Gets whether noise suppression is enabled
+     *
+     * ### Usage
+     *
+     * ```javascript
+     * App.isNoiseSuppressionEnabled().then(function(val) {
+     *   var isEnabled = val;
+     * });
+     * ```
+     */
+    App.prototype.isNoiseSuppressionEnabled = function () {
+        return new Promise(function (resolve) {
+            internal_1.exec('CallHostFunc', 'getProperty', 'sound_ns', function (queryString) {
+                var queryParams = queryString.split('&');
+                var queryObj = arrayToObj(queryParams, '=');
+                resolve(queryObj['Enabled'] === '1');
+            });
+        });
+    };
+    /**
+     * param: enabled<boolean>
+     * ```
+     * return: Promise<boolean>
+     * ```
+     *
+     * Enables or disables noise suppression
+     *
+     * ### Usage
+     *
+     * ```javascript
+     * App.enableNoiseSuppression(enabled).then(function(val) {
+     *   var isSet = val;
+     * });
+     * ```
+     */
+    App.prototype.enableNoiseSuppression = function (enabled) {
+        return new Promise(function (resolve) {
+            internal_1.exec('CallHostFunc', 'setProperty', 'sound_ns', "Enabled=" + Number(enabled), function (setVal) {
+                resolve(setVal);
+            });
+        });
+    };
     // Transition Services
     /**
      * return: Promise<Transition>
@@ -1015,15 +1069,18 @@ var App = (function () {
      * });
      * ```
      */
-    App.prototype.clearBrowserCookies = function () {
+    App.prototype.clearBrowserCookies = function (cookiePath) {
         return new Promise(function (resolve, reject) {
-            if (environment_1.Environment.isSourcePlugin()) {
+            if (cookiePath && cookiePath !== '' && typeof window.external['CallHostFunc'] === 'function') {
+                internal_1.exec('CallHostFunc', 'deleteCookie', cookiePath);
+            }
+            else if (environment_1.Environment.isSourcePlugin()) {
                 reject(Error('This method is not available to source plugins.'));
             }
             else {
                 internal_1.exec('CallHost', 'deletecookie:videoitemprop');
-                resolve(true);
             }
+            resolve(true);
         });
     };
     /**
@@ -1043,7 +1100,7 @@ var App = (function () {
     return App;
 })();
 exports.App = App;
-},{"../internal/app":49,"../internal/internal":53,"../internal/util/json":56,"../internal/util/version":59,"../internal/util/xml":60,"../system/audio":61,"../util/rectangle":74,"./environment":4,"./transition":48}],2:[function(require,module,exports){
+},{"../internal/app":61,"../internal/internal":65,"../internal/util/json":68,"../internal/util/version":72,"../internal/util/xml":73,"../system/audio":74,"../util/rectangle":91,"./environment":4,"./transition":60}],2:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 /// <reference path="../../defs/window.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
@@ -1174,6 +1231,9 @@ var ChannelManager = (function (_super) {
             }
         });
     };
+    ChannelManager.off = function (event, handler) {
+        ChannelManager._emitter.off(event, handler);
+    };
     ChannelManager._emitter = new ChannelManager();
     ChannelManager._proxyCallbacks = {};
     ChannelManager._remoteCallbacks = {};
@@ -1209,7 +1269,7 @@ function _subscribeEventManager() {
     });
 }
 exports._subscribeEventManager = _subscribeEventManager;
-},{"../internal/eventmanager":50,"../internal/util/json":56,"../util/eventemitter":71,"./environment":4,"./streaminfo":47}],3:[function(require,module,exports){
+},{"../internal/eventmanager":62,"../internal/util/json":68,"../util/eventemitter":87,"./environment":4,"./streaminfo":58}],3:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -1398,7 +1458,7 @@ window_1.default.Setdlldogrant = function (value) {
         oldSetdlldogrant(value);
     }
 };
-},{"../internal/internal":53,"../util/eventemitter":71,"../util/window":75}],4:[function(require,module,exports){
+},{"../internal/internal":65,"../util/eventemitter":87,"../util/window":93}],4:[function(require,module,exports){
 var remote_1 = require('../internal/remote');
 var window_1 = require('../util/window');
 /**
@@ -1458,7 +1518,7 @@ var Environment = (function () {
     return Environment;
 })();
 exports.Environment = Environment;
-},{"../internal/remote":55,"../util/window":75}],5:[function(require,module,exports){
+},{"../internal/remote":67,"../util/window":93}],5:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var environment_1 = require('../core/environment');
 var internal_1 = require('../internal/internal');
@@ -1515,9 +1575,43 @@ var Extension = (function () {
     Extension.prototype.loadConfig = function () {
         var _this = this;
         return new Promise(function (resolve) {
-            internal_1.exec('GetPresProperty', _this._presName, function (config) {
-                var configObj = config === '' ? {} : JSON.parse(config);
-                resolve(configObj);
+            var getConfig = function (mapId) {
+                return new Promise(function (resolveConfig) {
+                    internal_1.exec('GetPresProperty', mapId, function (configData) {
+                        var configObj = null;
+                        //make sure that parse error is caught
+                        try {
+                            if (configData) {
+                                configObj = JSON.parse(configData);
+                            }
+                        }
+                        catch (err) {
+                            console.error('Error on load config', err);
+                        }
+                        resolveConfig(configObj);
+                    });
+                });
+            };
+            //default config is an empty object
+            var defaultConfig = {};
+            //try to get first from current location
+            getConfig(_this._presName)
+                .then(function (config) {
+                //if no config try on original location if its using the new file protocol prefix
+                if (!config && _this._presName.indexOf('file:///') > -1) {
+                    return getConfig(_this._presName.replace('file:///', 'file://'));
+                }
+                else {
+                    return Promise.resolve(config);
+                }
+            })
+                .then(function (config) {
+                if (config) {
+                    resolve(config);
+                }
+                else {
+                    resolve(defaultConfig);
+                }
             });
         });
     };
@@ -1578,7 +1672,94 @@ window_1.default.Setid = function (id) {
         oldSetid(id);
     }
 };
-},{"../core/environment":4,"../internal/app":49,"../internal/internal":53,"../internal/remote":55,"../util/window":75}],6:[function(require,module,exports){
+},{"../core/environment":4,"../internal/app":61,"../internal/internal":65,"../internal/remote":67,"../util/window":93}],6:[function(require,module,exports){
+/// <reference path="../../defs/es6-promise.d.ts" />
+/**
+ * The Filter class represents a post-processing shader used within XSplit Broadcaster.
+ * This can be used to apply effects to videoitems.
+ *
+ * Simply use one of the available Filter objects such as Filter.BLUR or
+ * Filter.SKETCHPENCILSTROKE as the parameter to the `setFilter()` method of an Item instance
+ */
+var Filter = (function () {
+    function Filter(key) {
+        var value = Filter._filterMap[key];
+        if (typeof value !== 'undefined') {
+            this._key = key; // retain key so that NONE is readable
+            this._value = value;
+        }
+        else {
+            this._key = key; // retain key so that NONE is readable
+            this._value = key.toLowerCase();
+        }
+    }
+    /**
+     * Converts this transition object to the underlying string representation to be read by XSplit Broadcaster.
+     */
+    Filter.prototype.toString = function () {
+        return this._value;
+    };
+    /**
+     * Converts this transition object to a easily identifiable string such as 'NONE'.
+     */
+    Filter.prototype.toFilterKey = function () {
+        return this._key;
+    };
+    /**
+     * return: Promise<Filter[]>
+     *
+     * Get all available filters for use in videoitems
+     *
+     * ** MINIMUM XBC REQUIREMENT **
+     * requires XBC v.3.9.1912.1002 and above
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * Filter.getFilters()
+     * .then(function(filters) {
+     *   for (var i = 0; i < filters.length; i++) {
+     *     console.log(filters[i].toString(); // Returns the value of the filter
+     *   }
+     * })
+     * ```
+     */
+    Filter.getFilters = function () {
+        return new Promise(function (resolve) {
+            // pending a core change,
+            // we should override hardcoded filter list from a listing from core
+            var filters = Object.keys(Filter._filterMap).map(function (key) { return new Filter(key); });
+            resolve(filters);
+        });
+    };
+    Filter._filterMap = {
+        NONE: 'none',
+        COOL: 'cool',
+        WARM: 'warm',
+        BLOOM: 'bloom',
+        MONOCHROME: 'monochrome',
+        INVERTCOLOR: 'invertcolor',
+        OLDMOVIE: 'oldmovie',
+        SKETCHPENCILSTROKE: 'sketchpencilstroke',
+        MAGNIFYSMOOTH: 'magnifysmooth',
+        BLUR: 'blur',
+        LUT: 'lut',
+    };
+    Filter.NONE = new Filter('NONE');
+    Filter.COOL = new Filter('COOL');
+    Filter.WARM = new Filter('WARM');
+    Filter.BLOOM = new Filter('BLOOM');
+    Filter.MONOCHROME = new Filter('MONOCHROME');
+    Filter.INVERTCOLOR = new Filter('INVERTCOLOR');
+    Filter.OLDMOVIE = new Filter('OLDMOVIE');
+    Filter.SKETCHPENCILSTROKE = new Filter('SKETCHPENCILSTROKE');
+    Filter.MAGNIFYSMOOTH = new Filter('MAGNIFYSMOOTH');
+    Filter.BLUR = new Filter('BLUR');
+    Filter.LUT = new Filter('LUT');
+    return Filter;
+})();
+exports.Filter = Filter;
+},{}],7:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -1626,8 +1807,8 @@ var AudioItem = (function (_super) {
     return AudioItem;
 })(item_1.Item);
 exports.AudioItem = AudioItem;
-mixin_1.applyMixins(AudioItem, [iaudiosource_1.SourceAudio, iaudio_1.Audio]);
-},{"../../internal/util/mixin":58,"../source/iaudio":30,"../source/iaudiosource":31,"./item":16}],7:[function(require,module,exports){
+mixin_1.applyMixins(AudioItem, [iaudio_1.Audio, iaudiosource_1.SourceAudio]);
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/iaudiosource":37,"./item":20}],8:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -1754,7 +1935,7 @@ var CameraItem = (function (_super) {
 exports.CameraItem = CameraItem;
 mixin_1.applyMixins(CameraItem, [item_2.Item, ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition,
     iaudio_1.Audio, ieffects_1.ItemEffect, icamera_1.SourceCamera]);
-},{"../../internal/item":54,"../../internal/util/mixin":58,"../source/iaudio":30,"../source/icamera":32,"./ichroma":11,"./icolor":12,"./ieffects":13,"./ilayout":14,"./item":16,"./itransition":17}],8:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/mixin":70,"../source/iaudio":36,"../source/icamera":38,"./ichroma":14,"./icolor":15,"./ieffects":16,"./ilayout":18,"./item":20,"./itransition":21}],9:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -1799,7 +1980,7 @@ var FlashItem = (function (_super) {
 exports.FlashItem = FlashItem;
 mixin_1.applyMixins(FlashItem, [ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition,
     iaudio_1.Audio, ieffects_1.ItemEffect, iflash_1.SourceFlash]);
-},{"../../internal/util/mixin":58,"../source/iaudio":30,"../source/iflash":34,"./ichroma":11,"./icolor":12,"./ieffects":13,"./ilayout":14,"./item":16,"./itransition":17}],9:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/iflash":40,"./ichroma":14,"./icolor":15,"./ieffects":16,"./ilayout":18,"./item":20,"./itransition":21}],10:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -1859,7 +2040,86 @@ var GameItem = (function (_super) {
 exports.GameItem = GameItem;
 mixin_1.applyMixins(GameItem, [item_1.Item, ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition,
     ieffects_1.ItemEffect, igame_1.iSourceGame]);
-},{"../../internal/util/mixin":58,"../source/igame":35,"./ichroma":11,"./icolor":12,"./ieffects":13,"./ilayout":14,"./item":16,"./itransition":17}],10:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"../source/igame":41,"./ichroma":14,"./icolor":15,"./ieffects":16,"./ilayout":18,"./item":20,"./itransition":21}],11:[function(require,module,exports){
+/// <reference path="../../../defs/es6-promise.d.ts" />
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var mixin_1 = require('../../internal/util/mixin');
+var ilayout_1 = require('./ilayout');
+var icolor_1 = require('./icolor');
+var ichroma_1 = require('./ichroma');
+var ieffects_1 = require('./ieffects');
+var itransition_1 = require('./itransition');
+var item_1 = require('./item');
+/**
+ * The GenericItem class represents a generic item.
+ *
+ * Inherits from: {@link #core/Item Core/Item}
+ *
+ * Implements: {@link #core/IItemChroma Core/IItemChroma},
+ * {@link #core/IItemColor Core/IItemColor},
+ * {@link #core/IItemLayout Core/IItemLayout},
+ * {@link #core/IItemTransition Core/IItemTransition},
+ * {@link #core/IItemEffect Core/IItemEffect}
+ *
+ *  All methods marked as *Chainable* resolve with the original `GenericItem`
+ *  instance.
+ */
+var GenericItem = (function (_super) {
+    __extends(GenericItem, _super);
+    function GenericItem() {
+        _super.apply(this, arguments);
+    }
+    return GenericItem;
+})(item_1.Item);
+exports.GenericItem = GenericItem;
+mixin_1.applyMixins(GenericItem, [ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition,
+    ieffects_1.ItemEffect]);
+},{"../../internal/util/mixin":70,"./ichroma":14,"./icolor":15,"./ieffects":16,"./ilayout":18,"./item":20,"./itransition":21}],12:[function(require,module,exports){
+/// <reference path="../../../defs/es6-promise.d.ts" />
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var mixin_1 = require('../../internal/util/mixin');
+var ilayout_1 = require('./ilayout');
+var icolor_1 = require('./icolor');
+var igroup_1 = require('./igroup');
+var ichroma_1 = require('./ichroma');
+var ieffects_1 = require('./ieffects');
+var itransition_1 = require('./itransition');
+var item_1 = require('./item');
+/**
+ * The GroupItem class represents a group item.
+ *
+ * Inherits from: {@link #core/Item Core/Item}
+ *
+ * Implements: {@link #core/IItemChroma Core/IItemChroma},
+ * {@link #core/IItemColor Core/IItemColor},
+ * {@link #core/IItemLayout Core/IItemLayout},
+ * {@link #core/IItemTransition Core/IItemTransition},
+ * {@link #core/IItemEffect Core/IItemEffect}
+ *
+ *  All methods marked as *Chainable* resolve with the original `GroupItem`
+ *  instance.
+ */
+var GroupItem = (function (_super) {
+    __extends(GroupItem, _super);
+    function GroupItem() {
+        _super.apply(this, arguments);
+    }
+    return GroupItem;
+})(item_1.Item);
+exports.GroupItem = GroupItem;
+mixin_1.applyMixins(GroupItem, [ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition,
+    ieffects_1.ItemEffect, igroup_1.ItemGroup]);
+},{"../../internal/util/mixin":70,"./ichroma":14,"./icolor":15,"./ieffects":16,"./igroup":17,"./ilayout":18,"./item":20,"./itransition":21}],13:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -1922,7 +2182,7 @@ var HtmlItem = (function (_super) {
 exports.HtmlItem = HtmlItem;
 mixin_1.applyMixins(HtmlItem, [ihtml_1.iSourceHtml, ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition,
     iconfig_1.SourceConfigurable, iaudio_1.Audio, ieffects_1.ItemEffect]);
-},{"../../internal/util/mixin":58,"../source/iaudio":30,"../source/iconfig":33,"../source/ihtml":36,"./ichroma":11,"./icolor":12,"./ieffects":13,"./ilayout":14,"./item":16,"./itransition":17}],11:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/iconfig":39,"../source/ihtml":42,"./ichroma":14,"./icolor":15,"./ieffects":16,"./ilayout":18,"./item":20,"./itransition":21}],14:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var color_1 = require('../../util/color');
@@ -2297,16 +2557,21 @@ var ItemChroma = (function () {
     };
     ItemChroma.prototype.setChromaColorKeyColor = function (value) {
         var _this = this;
-        return new Promise(function (resolve) {
-            item_1.Item.set('prop:key_colorrgb', String(value.getIbgr()), _this._id).then(function () {
-                resolve(_this);
-            });
+        return new Promise(function (resolve, reject) {
+            if (!(value instanceof color_1.Color)) {
+                reject(TypeError('Use a Color object as the parameter.'));
+            }
+            else {
+                item_1.Item.set('prop:key_colorrgb', String(value.getIbgr()), _this._id).then(function () {
+                    resolve(_this);
+                });
+            }
         });
     };
     return ItemChroma;
 })();
 exports.ItemChroma = ItemChroma;
-},{"../../internal/item":54,"../../util/color":70}],12:[function(require,module,exports){
+},{"../../internal/item":66,"../../util/color":86}],15:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var color_1 = require('../../util/color');
@@ -2324,7 +2589,10 @@ var ItemColor = (function () {
     ItemColor.prototype.setTransparency = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (value < 0 || value > 255) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value < 0 || value > 255) {
                 reject(RangeError('Transparency may only be in the range 0-255.'));
             }
             else {
@@ -2345,7 +2613,10 @@ var ItemColor = (function () {
     ItemColor.prototype.setBrightness = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (value < -100 || value > 100) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value < -100 || value > 100) {
                 reject(RangeError('Brightness may only be in the range -100 to 100.'));
             }
             else {
@@ -2366,7 +2637,10 @@ var ItemColor = (function () {
     ItemColor.prototype.setContrast = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (value < -100 || value > 100) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value < -100 || value > 100) {
                 reject(RangeError('Contrast may only be in the range -100 to 100.'));
             }
             else {
@@ -2387,7 +2661,10 @@ var ItemColor = (function () {
     ItemColor.prototype.setHue = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (value < -180 || value > 180) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value < -180 || value > 180) {
                 reject(RangeError('Contrast may only be in the range -180 to 180.'));
             }
             else {
@@ -2408,7 +2685,10 @@ var ItemColor = (function () {
     ItemColor.prototype.setSaturation = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (value < -100 || value > 100) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value < -100 || value > 100) {
                 reject(RangeError('Saturation may only be in the range -100 to 100'));
             }
             else {
@@ -2437,16 +2717,21 @@ var ItemColor = (function () {
     ItemColor.prototype.setBorderColor = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            var colorString;
-            if (value.isTransparent()) {
-                colorString = '0';
+            if (!(value instanceof color_1.Color)) {
+                reject(TypeError('Use a Color object as the parameter.'));
             }
             else {
-                colorString = String(value.getIbgr() - 0x80000000);
+                var colorString;
+                if (value.isTransparent()) {
+                    colorString = '0';
+                }
+                else {
+                    colorString = String(value.getIbgr() - 0x80000000);
+                }
+                item_1.Item.set('prop:border', colorString, _this._id).then(function () {
+                    resolve(_this);
+                });
             }
-            item_1.Item.set('prop:border', colorString, _this._id).then(function () {
-                resolve(_this);
-            });
         });
     };
     ItemColor.prototype.isFullDynamicColorRange = function () {
@@ -2473,10 +2758,12 @@ var ItemColor = (function () {
     return ItemColor;
 })();
 exports.ItemColor = ItemColor;
-},{"../../internal/item":54,"../../util/color":70}],13:[function(require,module,exports){
+},{"../../internal/item":66,"../../util/color":86}],16:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var color_1 = require('../../util/color');
+var json_1 = require('../../internal/util/json');
+var filter_1 = require('../filter');
 /**
  *  Used by sources that implement the Effect interface.
  *  Check `getMaskEffect()`/`setMaskEffect()` method of
@@ -2771,8 +3058,11 @@ var ItemEffect = (function () {
             var parameterObject = {};
             parameterObject['arrayIndex'] = 0;
             parameterObject['indIndex'] = [1, 2, 3];
-            _this._getEdgeEffectValue(parameterObject).then(function (val) {
-                resolve(color_1.Color.fromRGBString('#' + _this._convertToHex(val[0]) + _this._convertToHex(val[1]) + _this._convertToHex(val[2])));
+            _this._getEdgeEffectValue(parameterObject)
+                .then(function (val) {
+                resolve(color_1.Color.fromRGBString('#' + _this._convertToHex(val[0]) +
+                    _this._convertToHex(val[1]) +
+                    _this._convertToHex(val[2])));
             }).catch(function (err) {
                 resolve(_DEFAULT_EFFECT_VALUES['BORDER_COLOR']);
             });
@@ -2781,13 +3071,19 @@ var ItemEffect = (function () {
     ItemEffect.prototype.setBorderEffectColor = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            var parameterObject = {};
-            parameterObject['arrayIndex'] = 0;
-            parameterObject['indIndex'] = [1, 2, 3];
-            parameterObject['value'] = _this._getRGBArray(value);
-            _this._setEdgeEffectValue(parameterObject).then(function () {
-                resolve(_this);
-            });
+            if (!(value instanceof color_1.Color)) {
+                reject(TypeError('Use a Color object as the parameter.'));
+            }
+            else {
+                var parameterObject = {};
+                parameterObject['arrayIndex'] = 0;
+                parameterObject['indIndex'] = [1, 2, 3];
+                parameterObject['value'] = _this._getRGBArray(value);
+                _this._setEdgeEffectValue(parameterObject)
+                    .then(function () {
+                    resolve(_this);
+                });
+            }
         });
     };
     ItemEffect.prototype.getShadowEffectColor = function () {
@@ -3017,10 +3313,14 @@ var ItemEffect = (function () {
         return new Promise(function (resolve, reject) {
             item_1.Item.get('prop:edgeeffectmaskmode', _this._id).then(function (val) {
                 if (val === '1' || val === '3') {
-                    item_1.Item.set('prop:edgeeffectmaskmode', value ? '3' : '1', _this._id);
+                    item_1.Item.set('prop:edgeeffectmaskmode', value ? '3' : '1', _this._id).then(function () {
+                        resolve(_this);
+                    });
                 }
                 else if (val === '2' || val === '4') {
-                    item_1.Item.set('prop:edgeeffectmaskmode', value ? '4' : '2', _this._id);
+                    item_1.Item.set('prop:edgeeffectmaskmode', value ? '4' : '2', _this._id).then(function () {
+                        resolve(_this);
+                    });
                 }
                 else {
                     reject(Error('This method is not available if filemasking is not enabled.'));
@@ -3028,10 +3328,203 @@ var ItemEffect = (function () {
             });
         });
     };
+    ItemEffect.prototype.getFilter = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            item_1.Item.get('prop:effects', _this._id)
+                .then(function (val) {
+                try {
+                    var effectsJXON = json_1.JSON.parse(val);
+                    resolve(new filter_1.Filter(effectsJXON['children'][0]['id']));
+                }
+                catch (e) {
+                    resolve(filter_1.Filter.NONE);
+                }
+            });
+        });
+    };
+    ItemEffect.prototype.setFilter = function (value, config) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            config = config ? config : {};
+            var intensity = config['intensity'] ? config['intensity'] / 100 : 1;
+            var intensityConfig = "0," + intensity + ",0,0,0";
+            var filterValue = value instanceof filter_1.Filter ? value.toString() : value;
+            if (!filterValue || Object.keys(filter_1.Filter._filterMap).indexOf(filterValue.toUpperCase()) < 0) {
+                reject(Error('Filter non-existent'));
+            }
+            else {
+                var configString = '';
+                var effectString = '';
+                if (filterValue === 'cool') {
+                    configString = intensityConfig + "|1,0.0,0.0,0.0,0.0|2,0.53,0.95,0.95,1.0|3,0.0,0.0,0.1,1.0";
+                }
+                else if (filterValue === 'warm') {
+                    configString = intensityConfig + "|1,0.0,0.0,0.0,0.0|2,1,0.91,0.77,1.0|3,0.1,0.05,0,1.0";
+                }
+                else if (filterValue !== 'none') {
+                    configString = intensityConfig;
+                }
+                if (filterValue === 'lut') {
+                    var resourceFile = config['resourceFile'] ? config['resourceFile'] : '';
+                    var resourceString = "<resource file=\"" + resourceFile + "\" />";
+                    effectString = "<effect id=\"" + filterValue + "\" cfg=\"" + configString + "\">" + resourceString + "</effect>";
+                }
+                else {
+                    effectString = "<effect id=\"" + filterValue + "\" cfg=\"" + configString + "\" />";
+                }
+                var effect = "<effects>" + effectString + "</effects>";
+                item_1.Item.set('prop:effects', effect, _this._id).then(function () {
+                    resolve(_this);
+                });
+            }
+        });
+    };
+    ItemEffect.prototype.removeFilter = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            item_1.Item.set('prop:effects', '<effects/>', _this._id).then(function () {
+                resolve(_this);
+            });
+        });
+    };
+    ItemEffect.prototype.getFilterConfig = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            item_1.Item.get('prop:effects', _this._id).then(function (val) {
+                var configObj = {};
+                try {
+                    var effectsJXON = json_1.JSON.parse(val);
+                    if (effectsJXON['children'][0]['cfg']) {
+                        var cfgArray = effectsJXON['children'][0]['cfg'].split(',');
+                        configObj['intensity'] = Number(cfgArray[1]) * 100;
+                    }
+                    if (effectsJXON['children'][0]['children'] && effectsJXON['children'][0]['children'][0]['file']) {
+                        configObj['resourceFile'] = effectsJXON['children'][0]['children'][0]['file'];
+                    }
+                }
+                catch (e) {
+                }
+                resolve(configObj);
+            });
+        });
+    };
     return ItemEffect;
 })();
 exports.ItemEffect = ItemEffect;
-},{"../../internal/item":54,"../../util/color":70}],14:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/json":68,"../../util/color":86,"../filter":6}],17:[function(require,module,exports){
+/// <reference path="../../../defs/es6-promise.d.ts" />
+var item_1 = require('../../internal/item');
+var app_1 = require('../../internal/app');
+var itemtyperesolve_1 = require('../../util/itemtyperesolve');
+var item_2 = require('./item');
+var findItem = function (presetArray, id) {
+    var itemViaID = undefined;
+    presetArray.find(function (item) {
+        var children = item.children || [];
+        var result = children.find(function (child) { return child['id'] === id; });
+        if (result) {
+            itemViaID = result;
+        }
+        return result !== undefined;
+    });
+    return itemViaID;
+};
+var getID = function (item) {
+    if (item instanceof item_2.Item) {
+        return item._id;
+    }
+    else {
+        return item;
+    }
+};
+var toItemString = function (items) {
+    if (!Array.isArray(items)) {
+        return getID(items);
+    }
+    var itemStringArray = items.map(function (item) {
+        return getID(item);
+    });
+    return itemStringArray.join(',');
+};
+var ItemGroup = (function () {
+    function ItemGroup() {
+    }
+    ItemGroup.prototype.getItems = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            app_1.App.getAsList('sceneconfig')
+                .then(function (jsonArray) {
+                // get group item here
+                var groupItem = findItem(jsonArray, _this._id);
+                var children = (groupItem && groupItem.children[0].children) ? groupItem.children[0].children : [];
+                var childItems = children.map(function (item) { return itemtyperesolve_1.ItemTypeResolve(item); });
+                resolve(childItems);
+            }).catch(function (err) {
+                reject(Error('Group item non-existent'));
+            });
+        });
+    };
+    ItemGroup.prototype.addItems = function (items) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var itemArrayString = toItemString(items);
+            item_1.Item.get('prop:scene', _this._id)
+                .then(function (sceneIndex) {
+                if (sceneIndex === '') {
+                    reject(Error('Item is not a group item or non-existent'));
+                }
+                return app_1.App.get("scenecanaddtogroup:" + sceneIndex + ":" + _this._id + "," + itemArrayString);
+            }).then(function (canAdd) {
+                if (canAdd === '1') {
+                    return app_1.App.callFunc('addtogroup', _this._id + "," + itemArrayString);
+                }
+                else {
+                    reject(Error('One or more items provided cannot be added to the group'));
+                }
+            }).then(function (result) {
+                resolve(_this);
+            }).catch(function (err) {
+                reject(err);
+            });
+        });
+    };
+    ItemGroup.prototype.removeItems = function (items) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var itemArrayString = toItemString(items);
+            item_1.Item.get('prop:scene', _this._id)
+                .then(function (sceneIndex) {
+                if (sceneIndex === '') {
+                    reject(Error('Item is not a group item or non-existent'));
+                }
+                return app_1.App.get("scenecanremovefromgroup:" + sceneIndex + ":" + _this._id + "," + itemArrayString);
+            }).then(function (canRemove) {
+                if (canRemove === '1' || canRemove === '2') {
+                    return app_1.App.callFunc('removefromgroup', _this._id + "," + itemArrayString);
+                }
+                else {
+                    reject(Error('One or more items provided cannot be removed from the group'));
+                }
+            }).then(function (result) {
+                resolve(_this);
+            }).catch(function (err) {
+                reject(err);
+            });
+        });
+    };
+    ItemGroup.prototype.unGroup = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            app_1.App.callFunc('removefromgroupall', _this._id).then(function (val) {
+                resolve(_this);
+            });
+        });
+    };
+    return ItemGroup;
+})();
+exports.ItemGroup = ItemGroup;
+},{"../../internal/app":61,"../../internal/item":66,"../../util/itemtyperesolve":89,"./item":20}],18:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var scene_1 = require('../scene');
@@ -3159,7 +3652,10 @@ var ItemLayout = (function () {
     ItemLayout.prototype.setRotateY = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (value < -360 || value > 360) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value < -360 || value > 360) {
                 reject(Error('Invalid value. Min: -360, Max: 360'));
             }
             else {
@@ -3180,7 +3676,10 @@ var ItemLayout = (function () {
     ItemLayout.prototype.setRotateX = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (value < -360 || value > 360) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value < -360 || value > 360) {
                 reject(Error('Invalid value. Min: -360, Max: 360'));
             }
             else {
@@ -3201,7 +3700,10 @@ var ItemLayout = (function () {
     ItemLayout.prototype.setRotateZ = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (value < -360 || value > 360) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value < -360 || value > 360) {
                 reject(Error('Invalid value. Min: -360, Max: 360'));
             }
             else {
@@ -3288,7 +3790,10 @@ var ItemLayout = (function () {
     ItemLayout.prototype.setEnhancedRotate = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (value < -180 || value > 180) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value < -180 || value > 180) {
                 reject(Error('Invalid value. Min: -180, Max: 180'));
             }
             else {
@@ -3352,7 +3857,12 @@ var ItemLayout = (function () {
                             return item_1.Item.get('prop:posaspect', _this._id);
                         }).then(function (val) {
                             return item_1.Item.set('prop:pos', val, _this._id);
+                        }).then(function () {
+                            resolve(_this);
                         });
+                    }
+                    else {
+                        resolve(_this);
                     }
                 });
             }
@@ -3732,7 +4242,7 @@ var ItemLayout = (function () {
     return ItemLayout;
 })();
 exports.ItemLayout = ItemLayout;
-},{"../../internal/item":54,"../../util/rectangle":74,"../scene":23}],15:[function(require,module,exports){
+},{"../../internal/item":66,"../../util/rectangle":91,"../scene":29}],19:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -3747,6 +4257,7 @@ var ichroma_1 = require('./ichroma');
 var ieffects_1 = require('./ieffects');
 var itransition_1 = require('./itransition');
 var item_1 = require('./item');
+var iimage_1 = require('../source/iimage');
 /**
  * The ImageItem class represents an image item (includes GIF files).
  *
@@ -3769,8 +4280,8 @@ var ImageItem = (function (_super) {
     return ImageItem;
 })(item_1.Item);
 exports.ImageItem = ImageItem;
-mixin_1.applyMixins(ImageItem, [item_1.Item, ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition, ieffects_1.ItemEffect]);
-},{"../../internal/util/mixin":58,"./ichroma":11,"./icolor":12,"./ieffects":13,"./ilayout":14,"./item":16,"./itransition":17}],16:[function(require,module,exports){
+mixin_1.applyMixins(ImageItem, [item_1.Item, ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition, ieffects_1.ItemEffect, iimage_1.SourceImage]);
+},{"../../internal/util/mixin":70,"../source/iimage":43,"./ichroma":14,"./icolor":15,"./ieffects":16,"./ilayout":18,"./item":20,"./itransition":21}],20:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -3788,18 +4299,13 @@ var json_1 = require('../../internal/util/json');
 var xml_1 = require('../../internal/util/xml');
 var scene_1 = require('../scene');
 var ilayout_1 = require('./ilayout');
+var splitmode_1 = require('../../internal/util/splitmode');
+var addtosceneutil_1 = require('../../util/addtosceneutil');
+var global_1 = require('../../internal/global');
 var version_1 = require('../../internal/util/version');
 var isource_1 = require('../source/isource');
 var source_1 = require('../source/source');
-var game_1 = require('../source/game');
-var camera_1 = require('../source/camera');
-var audio_1 = require('../source/audio');
-var videoplaylist_1 = require('../source/videoplaylist');
-var html_1 = require('../source/html');
-var flash_1 = require('../source/flash');
-var screen_1 = require('../source/screen');
-var image_1 = require('../source/image');
-var media_1 = require('../source/media');
+var sourcetyperesolve_1 = require('../../util/sourcetyperesolve');
 /**
  * Used by items to determine the its view type.
  *
@@ -4124,58 +4630,55 @@ var Item = (function (_super) {
     Item.prototype.duplicate = function (options) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (version_1.versionCompare(version_1.getVersion())
-                .is
-                .lessThan(version_1.globalsrcMinVersion)) {
-                app_1.App.callFunc('additem', _this.toXML().toString()).then(function () {
-                    resolve(_this);
-                });
-            }
-            else {
-                if (options) {
-                    if (options.linked) {
-                        item_1.Item.set('prop:keeploaded', '1', _this._id);
+            var cmd = 'additem';
+            var getItem = function (res) {
+                return new Promise(function (innerResolve, innerReject) {
+                    if (!global_1.Global.isListenToItemAdd()) {
+                        innerResolve(_this);
                     }
-                    if (options.scene !== undefined && options.linked !== undefined) {
-                        if (options.scene instanceof scene_1.Scene) {
-                            options.scene.getSceneNumber().then(function (id) {
-                                app_1.App.callFunc("link:" + (options.linked ? 1 : 0) + "|s:" + id + "|additem", _this.toXML().toString())
-                                    .then(function () {
-                                    resolve(_this);
-                                });
-                            });
-                        }
-                        else {
-                            reject(Error('Invalid parameters. Accepted format is "(options: {linked?:<boolean>, scene?:<Scene>})"'));
-                        }
-                    }
-                    else if (options.linked === undefined) {
-                        if (options.scene instanceof scene_1.Scene) {
-                            options.scene.getSceneNumber().then(function (id) {
-                                app_1.App.callFunc("link:0|s:" + id + "|additem", _this.toXML().toString())
-                                    .then(function () {
-                                    resolve(_this);
-                                });
-                            });
-                        }
-                        else {
-                            reject(Error('Invalid parameters. Accepted format is:: "(options: {linked?:<boolean>, scene?:<Scene>})"'));
-                        }
-                    }
-                    else if (options.scene === undefined) {
-                        app_1.App.callFunc("link:" + (options.linked ? 1 : 0) + "|s:" + _this._sceneId + "|additem", _this.toXML().toString())
-                            .then(function () {
-                            resolve(_this);
+                    else {
+                        scene_1.Scene.searchItemsById(res)
+                            .then(function (item) {
+                            innerResolve(item);
+                        }).catch(function (err) {
+                            innerReject(err);
                         });
                     }
+                });
+            };
+            splitmode_1.checkSplitmode(options ? options.scene : undefined).then(function (scenePrefix) {
+                if (version_1.versionCompare(version_1.getVersion())
+                    .is
+                    .lessThan(version_1.globalsrcMinVersion)) {
+                    return addtosceneutil_1.addToSceneHandler(scenePrefix + cmd, _this.toXML().toString());
                 }
                 else {
-                    app_1.App.callFunc('link:0|additem', _this.toXML().toString())
-                        .then(function () {
-                        resolve(_this);
-                    });
+                    if (options) {
+                        if (options.linked) {
+                            item_1.Item.set('prop:keeploaded', '1', _this._id);
+                        }
+                        if (options.scene !== undefined && options.linked !== undefined) {
+                            cmd = "link:" + (options.linked ? 1 : 0) + "|" + scenePrefix + "additem";
+                        }
+                        else if (options.linked === undefined) {
+                            cmd = "link:0|" + scenePrefix + "additem";
+                        }
+                        else if (options.scene === undefined) {
+                            cmd = "link:" + (options.linked ? 1 : 0) + "|s:" + _this._sceneId + "|additem";
+                        }
+                    }
+                    else {
+                        cmd = 'link:0|additem';
+                    }
+                    return addtosceneutil_1.addToSceneHandler(cmd, _this.toXML().toString());
                 }
-            }
+            }).then(function (result) {
+                return getItem(result);
+            }).then(function (result) {
+                resolve(result);
+            }).catch(function (err) {
+                reject(err);
+            });
         });
     };
     /**
@@ -4240,79 +4743,76 @@ var Item = (function (_super) {
      */
     Item.prototype.getSource = function () {
         var _this = this;
-        var uniqueSource = [];
-        var uniqueObj = {};
-        var _xmlparams;
-        var _type;
-        var _srcId;
-        var promiseArray = [];
-        var _thisItem = this;
         return new Promise(function (resolve, reject) {
-            _this.getItemList().then(function (items) {
-                for (var i = 0; i < items.length; i++) {
-                    for (var key in items[i]) {
-                        if (key === '_srcId') {
-                            uniqueObj[items[i][key]] = items[i];
-                        }
-                    }
+            item_1.Item.get('config', _this._id)
+                .then(function (config) {
+                var item = json_1.JSON.parse(config);
+                var srcType = sourcetyperesolve_1.SourceTypeResolve(item);
+                resolve(srcType);
+            }).catch(function (err) {
+                reject(err);
+            });
+        });
+    };
+    /**
+     * return: Promise<boolean>
+     *
+     * Checks if item is part of a group
+     *
+     * #### Usage
+     * ```javascript
+     * item.isChildItem()
+     * .then(function(isChild) {
+     *   console.log(isChild);
+     * });
+     * ```
+     */
+    Item.prototype.isChildItem = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            scene_1.Scene.searchScenesByItemId(_this._id)
+                .then(function (scene) {
+                return scene.getSceneIndex();
+            }).then(function (sceneIndex) {
+                return app_1.App.get("scenefindgroup:" + sceneIndex + ":" + _this._id);
+            }).then(function (groupID) {
+                resolve(groupID !== '' && groupID !== null);
+            });
+        });
+    };
+    /**
+     * return: Promise<boolean>
+     *
+     * Get the GroupItem that contains this item.
+     * This rejects if item is not a child item or non-existent
+     *
+     * #### Usage
+     * ```javascript
+     * item.getParentItem()
+     * .then(function(parentItem) {
+     *   console.log(parentItem);
+     * });
+     * ```
+     */
+    Item.prototype.getParentItem = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            scene_1.Scene.searchScenesByItemId(_this._id)
+                .then(function (scene) {
+                return scene.getSceneIndex();
+            }).then(function (sceneIndex) {
+                return app_1.App.get("scenefindgroup:" + sceneIndex + ":" + _this._id);
+            }).then(function (groupID) {
+                if (groupID.trim() === '' || groupID === null) {
+                    reject('Item is not a child item or non-existent');
                 }
-                for (var j in uniqueObj) {
-                    if (uniqueObj.hasOwnProperty(j)) {
-                        uniqueSource.push(uniqueObj[j]);
-                    }
+                else {
+                    return scene_1.Scene.searchItemsById(groupID);
                 }
-                var typePromise = function (index) { return new Promise(function (typeResolve) {
-                    var source = uniqueSource[index];
-                    var params = source['_xmlparams'];
-                    var type = Number(source['_type']);
-                    if (type === isource_1.ItemTypes.GAMESOURCE) {
-                        typeResolve(new game_1.GameSource(params));
-                    }
-                    else if ((type === isource_1.ItemTypes.HTML || type === isource_1.ItemTypes.FILE) &&
-                        source['_name'].indexOf('Video Playlist') === 0 &&
-                        source['FilePlaylist'] !== '') {
-                        typeResolve(new videoplaylist_1.VideoPlaylistSource(params));
-                    }
-                    else if (type === isource_1.ItemTypes.HTML) {
-                        typeResolve(new html_1.HtmlSource(params));
-                    }
-                    else if (type === isource_1.ItemTypes.SCREEN) {
-                        typeResolve(new screen_1.ScreenSource(params));
-                    }
-                    else if (type === isource_1.ItemTypes.BITMAP ||
-                        type === isource_1.ItemTypes.FILE &&
-                            /\.gif$/.test(source['item'])) {
-                        typeResolve(new image_1.ImageSource(params));
-                    }
-                    else if (type === isource_1.ItemTypes.FILE &&
-                        /\.(gif|xbs)$/.test(source['item']) === false &&
-                        /^(rtsp|rtmp):\/\//.test(source['item']) === false &&
-                        new RegExp(media_1.MediaTypes.join('|')).test(source['item']) === true) {
-                        typeResolve(new media_1.MediaSource(source));
-                    }
-                    else if (Number(source['type']) === isource_1.ItemTypes.LIVE &&
-                        source['item'].indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') === -1) {
-                        typeResolve(new camera_1.CameraSource(params));
-                    }
-                    else if (Number(source['type']) === isource_1.ItemTypes.LIVE &&
-                        source['item'].indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') !== -1) {
-                        typeResolve(new audio_1.AudioSource(params));
-                    }
-                    else if (Number(source['type']) === isource_1.ItemTypes.FLASHFILE) {
-                        typeResolve(new flash_1.FlashSource(params));
-                    }
-                    else {
-                        typeResolve(new source_1.Source(params));
-                    }
-                }); };
-                if (Array.isArray(uniqueSource)) {
-                    for (var i = 0; i < uniqueSource.length; i++) {
-                        promiseArray.push(typePromise(i));
-                    }
-                }
-                Promise.all(promiseArray).then(function (results) {
-                    resolve(results[0]);
-                });
+            }).then(function (groupItem) {
+                resolve(groupItem);
+            }).catch(function (err) {
+                reject(err);
             });
         });
     };
@@ -4322,7 +4822,7 @@ var Item = (function (_super) {
 })(source_1.Source);
 exports.Item = Item;
 mixin_1.applyMixins(Item, [isource_1.iSource, ilayout_1.ItemLayout]);
-},{"../../internal/app":49,"../../internal/eventmanager":50,"../../internal/item":54,"../../internal/util/json":56,"../../internal/util/mixin":58,"../../internal/util/version":59,"../../internal/util/xml":60,"../../util/eventemitter":71,"../environment":4,"../scene":23,"../source/audio":24,"../source/camera":25,"../source/flash":27,"../source/game":28,"../source/html":29,"../source/image":37,"../source/isource":41,"../source/media":43,"../source/screen":44,"../source/source":45,"../source/videoplaylist":46,"./ilayout":14}],17:[function(require,module,exports){
+},{"../../internal/app":61,"../../internal/eventmanager":62,"../../internal/global":63,"../../internal/item":66,"../../internal/util/json":68,"../../internal/util/mixin":70,"../../internal/util/splitmode":71,"../../internal/util/version":72,"../../internal/util/xml":73,"../../util/addtosceneutil":85,"../../util/eventemitter":87,"../../util/sourcetyperesolve":92,"../environment":4,"../scene":29,"../source/isource":50,"../source/source":56,"./ilayout":18}],21:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var transition_1 = require('../transition');
@@ -4360,10 +4860,15 @@ var ItemTransition = (function () {
     };
     ItemTransition.prototype.setTransition = function (value) {
         var _this = this;
-        return new Promise(function (resolve) {
-            item_1.Item.set('prop:transitionid', value.toString(), _this._id).then(function () {
-                resolve(_this);
-            });
+        return new Promise(function (resolve, reject) {
+            if (!(value instanceof transition_1.Transition)) {
+                reject(TypeError('Parameter should be a Transition object.'));
+            }
+            else {
+                item_1.Item.set('prop:transitionid', value.toString(), _this._id).then(function () {
+                    resolve(_this);
+                });
+            }
         });
     };
     ItemTransition.prototype.getTransitionTime = function () {
@@ -4377,7 +4882,10 @@ var ItemTransition = (function () {
     ItemTransition.prototype.setTransitionTime = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (value < 0 || value > 60000) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value < 0 || value > 60000) {
                 reject(RangeError('Transparency may only be in the range 0 to 60000.'));
             }
             else {
@@ -4390,7 +4898,7 @@ var ItemTransition = (function () {
     return ItemTransition;
 })();
 exports.ItemTransition = ItemTransition;
-},{"../../internal/item":54,"../transition":48}],18:[function(require,module,exports){
+},{"../../internal/item":66,"../transition":60}],22:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -4433,7 +4941,61 @@ var MediaItem = (function (_super) {
 exports.MediaItem = MediaItem;
 mixin_1.applyMixins(MediaItem, [item_1.Item, ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma,
     itransition_1.ItemTransition, iplayback_1.SourcePlayback, iaudio_1.Audio, ieffects_1.ItemEffect, imedia_1.SourceMedia]);
-},{"../../internal/util/mixin":58,"../source/iaudio":30,"../source/imedia":38,"../source/iplayback":39,"./ichroma":11,"./icolor":12,"./ieffects":13,"./ilayout":14,"./item":16,"./itransition":17}],19:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/imedia":45,"../source/iplayback":46,"./ichroma":14,"./icolor":15,"./ieffects":16,"./ilayout":18,"./item":20,"./itransition":21}],23:[function(require,module,exports){
+/// <reference path="../../../defs/es6-promise.d.ts" />
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var mixin_1 = require('../../internal/util/mixin');
+var ilayout_1 = require('./ilayout');
+var icolor_1 = require('./icolor');
+var ichroma_1 = require('./ichroma');
+var ieffects_1 = require('./ieffects');
+var itransition_1 = require('./itransition');
+var iaudio_1 = require('../source/iaudio');
+var item_1 = require('./item');
+var ireplay_1 = require('../source/ireplay');
+var ReplayItem = (function (_super) {
+    __extends(ReplayItem, _super);
+    function ReplayItem() {
+        _super.apply(this, arguments);
+    }
+    return ReplayItem;
+})(item_1.Item);
+exports.ReplayItem = ReplayItem;
+mixin_1.applyMixins(ReplayItem, [ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition,
+    iaudio_1.Audio, ieffects_1.ItemEffect, ireplay_1.SourceReplay]);
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/ireplay":47,"./ichroma":14,"./icolor":15,"./ieffects":16,"./ilayout":18,"./item":20,"./itransition":21}],24:[function(require,module,exports){
+/// <reference path="../../../defs/es6-promise.d.ts" />
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var mixin_1 = require('../../internal/util/mixin');
+var ilayout_1 = require('./ilayout');
+var icolor_1 = require('./icolor');
+var ichroma_1 = require('./ichroma');
+var ieffects_1 = require('./ieffects');
+var itransition_1 = require('./itransition');
+var iaudio_1 = require('../source/iaudio');
+var item_1 = require('./item');
+var iscene_1 = require('../source/iscene');
+var SceneItem = (function (_super) {
+    __extends(SceneItem, _super);
+    function SceneItem() {
+        _super.apply(this, arguments);
+    }
+    return SceneItem;
+})(item_1.Item);
+exports.SceneItem = SceneItem;
+mixin_1.applyMixins(SceneItem, [ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition,
+    iaudio_1.Audio, ieffects_1.ItemEffect, iscene_1.SourceScene]);
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/iscene":48,"./ichroma":14,"./icolor":15,"./ieffects":16,"./ilayout":18,"./item":20,"./itransition":21}],25:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -4473,7 +5035,7 @@ var ScreenItem = (function (_super) {
 exports.ScreenItem = ScreenItem;
 mixin_1.applyMixins(ScreenItem, [ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition,
     ieffects_1.ItemEffect, iscreen_1.iSourceScreen]);
-},{"../../internal/util/mixin":58,"../source/iscreen":40,"./ichroma":11,"./icolor":12,"./ieffects":13,"./ilayout":14,"./item":16,"./itransition":17}],20:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"../source/iscreen":49,"./ichroma":14,"./icolor":15,"./ieffects":16,"./ilayout":18,"./item":20,"./itransition":21}],26:[function(require,module,exports){
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
     function __() { this.constructor = d; }
@@ -4490,6 +5052,7 @@ var iconfig_1 = require('../source/iconfig');
 var item_1 = require('./item');
 var ivideoplaylist_1 = require('../source/ivideoplaylist');
 var iplayback_1 = require('../source/iplayback');
+var iaudio_1 = require('../source/iaudio');
 /**
  * The VideoPlaylistItem class represents the VideoPlaylist item that has been
  * added to the stage.
@@ -4500,7 +5063,8 @@ var iplayback_1 = require('../source/iplayback');
  * {@link #core/IItemColor Core/IItemColor},
  * {@link #core/IItemLayout Core/IItemLayout},
  * {@link #core/IItemTransition Core/IItemTransition},
- * {@link #core/ISourceConfigurable Core/ISourceConfigurable}
+ * {@link #core/ISourceConfigurable Core/ISourceConfigurable},
+ * {@link #core/IAudio Core/IAudio}
  *
  * ### Basic Usage
  *
@@ -4527,8 +5091,8 @@ var VideoPlaylistItem = (function (_super) {
 })(item_1.Item);
 exports.VideoPlaylistItem = VideoPlaylistItem;
 mixin_1.applyMixins(VideoPlaylistItem, [ilayout_1.ItemLayout, icolor_1.ItemColor, ichroma_1.ItemChroma, itransition_1.ItemTransition,
-    iconfig_1.SourceConfigurable, ivideoplaylist_1.SourceVideoPlaylist, iplayback_1.SourcePlayback]);
-},{"../../internal/util/mixin":58,"../source/iconfig":33,"../source/iplayback":39,"../source/ivideoplaylist":42,"./ichroma":11,"./icolor":12,"./ilayout":14,"./item":16,"./itransition":17}],21:[function(require,module,exports){
+    iconfig_1.SourceConfigurable, ivideoplaylist_1.SourceVideoPlaylist, iplayback_1.SourcePlayback, iaudio_1.Audio]);
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/iconfig":39,"../source/iplayback":46,"../source/ivideoplaylist":51,"./ichroma":14,"./icolor":15,"./ilayout":18,"./item":20,"./itransition":21}],27:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -4538,6 +5102,7 @@ var __extends = (this && this.__extends) || function (d, b) {
 };
 var eventemitter_1 = require('../util/eventemitter');
 var eventmanager_1 = require('../internal/eventmanager');
+var internal_1 = require('../internal/internal');
 /**
  * The LanguageInfo class allows access to the change in language made in
  * XSplit Broadcaster.
@@ -4589,6 +5154,13 @@ var LanguageInfo = (function (_super) {
             handler.call(_this, { lang: lang });
         });
     };
+    LanguageInfo.getCode = function () {
+        return new Promise(function (resolve) {
+            internal_1.exec('CallHostFunc', 'getProperty', 'html:language', function (langCode) {
+                resolve(langCode);
+            });
+        });
+    };
     LanguageInfo._emitter = new LanguageInfo();
     return LanguageInfo;
 })(eventemitter_1.EventEmitter);
@@ -4604,13 +5176,14 @@ eventmanager_1.EventManager.subscribe(['LanguageChanged'], function (langObj) {
         LanguageInfo.emit(eventString, langObj['lang']);
     }
 });
-},{"../internal/eventmanager":50,"../util/eventemitter":71}],22:[function(require,module,exports){
+},{"../internal/eventmanager":62,"../internal/internal":65,"../util/eventemitter":87}],28:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var internal_1 = require('../internal/internal');
 var environment_1 = require('./environment');
 var extension_1 = require('./extension');
 var streaminfo_1 = require('./streaminfo');
 var json_1 = require('../internal/util/json');
+var scene_1 = require('./scene');
 var item_1 = require('../internal/item');
 var remote_1 = require('../internal/remote');
 var window_1 = require('../util/window');
@@ -4724,6 +5297,11 @@ var Output = (function () {
                     for (var i = 0; i < results.children.length; i++) {
                         channels.push(new Output({
                             name: results.children[i]['name']
+                                .replace(/&apos;/g, "'")
+                                .replace(/&quot;/g, '"')
+                                .replace(/&gt;/g, '>')
+                                .replace(/&lt;/g, '<')
+                                .replace(/&amp;/g, '&')
                         }));
                     }
                     resolve(channels);
@@ -4734,14 +5312,113 @@ var Output = (function () {
         });
     };
     /**
+     * param: scene<number|Scene>
+     * ```
+     * return: Promise<boolean>
+     * ```
+     *
+     * Sets a scene to record. Set to live scene or blank string to reset
+     */
+    Output.setSceneToRecord = function (scene) {
+        return new Promise(function (resolve, reject) {
+            if (scene === '' || scene === scene_1.Scene.liveScene()) {
+                internal_1.exec('CallHostFunc', 'setSceneToRecord', '-1');
+                resolve(true);
+            }
+            else if (scene instanceof scene_1.Scene) {
+                scene.getSceneIndex().then(function (sceneIndex) {
+                    internal_1.exec('CallHostFunc', 'setSceneToRecord', Number(sceneIndex));
+                    resolve(true);
+                }).catch(function (err) {
+                    reject(err);
+                });
+            }
+            else if (typeof scene === 'number') {
+                if (scene < 1 || !Number['isInteger'](Number(scene))) {
+                    reject(Error('Invalid parameters. Valid range is greater than 0.'));
+                }
+                else {
+                    internal_1.exec('CallHostFunc', 'setSceneToRecord', String(scene - 1));
+                    resolve(true);
+                }
+            }
+            else {
+                reject(Error('Invalid parameters. Valid range is greater than 0 or a Scene object.'));
+            }
+        });
+    };
+    /**
+     * return: Promise<boolean>
+     *
+     * Start a local recording.
+     */
+    Output.startLocalRecording = function () {
+        return new Promise(function (resolve) {
+            internal_1.exec('CallHostFunc', 'startBroadcast', 'Local Recording', 'suppressPrestreamDialog=1');
+            resolve(true);
+        });
+    };
+    /**
+     * return: Promise<boolean>
+     *
+     * Unpause a local recording.
+     */
+    Output.stopLocalRecording = function () {
+        return new Promise(function (resolve) {
+            internal_1.exec('CallHost', 'stopBroadcast', 'Local Recording');
+            resolve(true);
+        });
+    };
+    /**
+     * return: Promise<boolean>
+     *
+     * Pause a local recording.
+     */
+    Output.pauseLocalRecording = function () {
+        return new Promise(function (resolve) {
+            internal_1.exec('CallHost', 'pauseRecording', 'Local Recording');
+            resolve(true);
+        });
+    };
+    /**
+     * return: Promise<boolean>
+     *
+     * Unpause a local recording.
+     */
+    Output.unpauseLocalRecording = function () {
+        return new Promise(function (resolve) {
+            internal_1.exec('CallHost', 'unpauseRecording', 'Local Recording');
+            resolve(true);
+        });
+    };
+    /**
      *  return: Promise<string>
      *
-     *  Gets the name of the Output.
+     *  Gets the actual name of the Output.
      */
     Output.prototype.getName = function () {
         var _this = this;
         return new Promise(function (resolve) {
             resolve(_this._name);
+        });
+    };
+    /**
+     *  return: Promise<string>
+     *
+     *  Gets the name of the Output as displayed in the Outputs menu.
+     */
+    Output.prototype.getDisplayName = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            Output._getBroadcastChannels(Output._id, _this._name).then(function (channelJXON) {
+                channelJXON['displayName'] = channelJXON['displayName'] ? channelJXON['displayName']
+                    .replace(/&apos;/g, "'")
+                    .replace(/&quot;/g, '"')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&amp;/g, '&') : _this._name;
+                resolve(channelJXON['displayName']);
+            });
         });
     };
     /**
@@ -4786,6 +5463,8 @@ var Output = (function () {
         });
     };
     /**
+     * ** For Deprecation, please use the static method instead
+     *
      * return: Promise<boolean>
      *
      * Pause a local recording.
@@ -4817,6 +5496,8 @@ var Output = (function () {
         });
     };
     /**
+     * ** For Deprecation, please use the static method instead
+     *
      * return: Promise<boolean>
      *
      * Unpause a local recording.
@@ -4847,8 +5528,37 @@ var Output = (function () {
             }
         });
     };
-    Output._getBroadcastChannels = function (id, handler) {
-        Output._id = id;
+    Output._getBroadcastChannels = function (id) {
+        var args = [];
+        for (var _i = 1; _i < arguments.length; _i++) {
+            args[_i - 1] = arguments[_i];
+        }
+        var callback = null;
+        var name;
+        var callbackName;
+        if (args.length === 1) {
+            if (typeof args[0] === 'string') {
+                name = args[0];
+                callbackName = id + '_' + name;
+                Output._id = id;
+            }
+        }
+        else if (args.length === 2) {
+            if (typeof args[0] === 'string') {
+                name = args[0];
+                callbackName = id + '_' + name;
+                Output._id = id;
+            }
+            else {
+                Output._id = id;
+            }
+            if (args[1] instanceof Function) {
+                callback = args[1];
+            }
+        }
+        else {
+            Output._id = id;
+        }
         return new Promise(function (resolve, reject) {
             if (environment_1.Environment.isSourcePlugin()) {
                 var isID = /^{[A-F0-9\-]*}$/i.test(Output._id);
@@ -4859,24 +5569,29 @@ var Output = (function () {
             if (remote_1.Remote.remoteType === 'remote') {
                 var message = {
                     type: 'broadcastChannels',
-                    id: Output._id
+                    id: id,
+                    name: name ? name : undefined
                 };
-                extension_1.Extension._remoteCallback[Output._id] = ({ resolve: resolve });
+                extension_1.Extension._remoteCallback[name ? callbackName : Output._id] = ({ resolve: resolve });
                 remote_1.Remote.sendMessage(encodeURIComponent(JSON.stringify(message)));
             }
             else if (remote_1.Remote.remoteType === 'proxy') {
-                if (Output._proxyCallback[Output._id] === undefined) {
-                    Output._proxyCallback[Output._id] = [];
+                if (Output._proxyCallback[name ? callbackName : Output._id] === undefined) {
+                    Output._proxyCallback[name ? callbackName : Output._id] = [];
                 }
-                Output._proxyCallback[Output._id] = handler;
-                internal_1.exec('CallHost', 'getBroadcastChannelList:' + Output._id);
+                Output._proxyCallback[name ? callbackName : Output._id] = callback;
+                name ?
+                    internal_1.exec('CallHostFunc', 'getBroadcastChannelXml', name, '0', function (channelXML) { window_1.default.SetBroadcastChannelXml(channelXML, name); }) :
+                    internal_1.exec('CallHostFunc', 'getBroadcastChannelList', window_1.default.SetBroadcastChannelList);
             }
             else {
-                if (Output._callback[Output._id] === undefined) {
-                    Output._callback[Output._id] = [];
+                if (Output._callback[name ? callbackName : Output._id] === undefined) {
+                    Output._callback[name ? callbackName : Output._id] = [];
                 }
-                Output._callback[Output._id] = ({ resolve: resolve });
-                internal_1.exec('CallHost', 'getBroadcastChannelList:' + Output._id);
+                Output._callback[name ? callbackName : Output._id] = ({ resolve: resolve });
+                name ?
+                    internal_1.exec('CallHostFunc', 'getBroadcastChannelXml', name, '0', function (channelXML) { window_1.default.SetBroadcastChannelXml(channelXML, name); }) :
+                    internal_1.exec('CallHostFunc', 'getBroadcastChannelList', window_1.default.SetBroadcastChannelList);
             }
         });
     };
@@ -4905,7 +5620,27 @@ window_1.default.SetBroadcastChannelList = function (channels) {
         oldSetBroadcastChannelList(channels);
     }
 };
-},{"../internal/internal":53,"../internal/item":54,"../internal/remote":55,"../internal/util/json":56,"../internal/util/version":59,"../util/window":75,"./environment":4,"./extension":5,"./streaminfo":47}],23:[function(require,module,exports){
+var oldSetBroadcastChannelXml = window_1.default.SetBroadcastChannelXml;
+window_1.default.SetBroadcastChannelXml = function (channelXML, name) {
+    var channelJXON = json_1.JSON.parse(channelXML);
+    channelJXON['name'] = channelJXON['name'] ? channelJXON['name'] : name;
+    channelJXON['displayName'] = channelJXON['displayName'] ? channelJXON['displayName'] : name;
+    channelJXON['name'] = channelJXON['name'].replace(/&apos;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&gt;/g, '>')
+        .replace(/&lt;/g, '<')
+        .replace(/&amp;/g, '&');
+    if (remote_1.Remote.remoteType === 'proxy') {
+        Output._proxyCallback[Output._id + '_' + channelJXON['name']].call(this, channelXML);
+    }
+    else {
+        Output._callback[Output._id + '_' + channelJXON['name']].resolve(channelJXON);
+    }
+    if (typeof oldSetBroadcastChannelXml === 'function') {
+        oldSetBroadcastChannelXml(channelXML);
+    }
+};
+},{"../internal/internal":65,"../internal/item":66,"../internal/remote":67,"../internal/util/json":68,"../internal/util/version":72,"../util/window":93,"./environment":4,"./extension":5,"./scene":29,"./streaminfo":58}],29:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
@@ -4914,66 +5649,59 @@ var internal_1 = require('../internal/internal');
 var environment_1 = require('./environment');
 var source_1 = require('./source/source');
 var isource_1 = require('./source/isource');
-var game_1 = require('./source/game');
-var camera_1 = require('./source/camera');
-var audio_1 = require('./source/audio');
-var videoplaylist_1 = require('./source/videoplaylist');
-var html_1 = require('./source/html');
-var flash_1 = require('./source/flash');
-var screen_1 = require('./source/screen');
-var image_1 = require('./source/image');
-var media_1 = require('./source/media');
 var item_1 = require('./items/item');
-var game_2 = require('./items/game');
-var camera_2 = require('./items/camera');
-var audio_2 = require('./items/audio');
-var videoplaylist_2 = require('./items/videoplaylist');
-var html_2 = require('./items/html');
-var flash_2 = require('./items/flash');
-var screen_2 = require('./items/screen');
-var image_2 = require('./items/image');
-var media_2 = require('./items/media');
+var itemtyperesolve_1 = require('../util/itemtyperesolve');
+var sourcetyperesolve_1 = require('../util/sourcetyperesolve');
+var transition_1 = require('./transition');
+var splitmode_1 = require('../internal/util/splitmode');
+var addtosceneutil_1 = require('../util/addtosceneutil');
 var version_1 = require('../internal/util/version');
+var supportedPresetTransitionEasingFunctions = [
+    '',
+    'none',
+    'easeInCubic',
+    'easeOutCubic',
+    'easeInOutCubic'
+];
 var Scene = (function () {
-    function Scene(sceneId) {
-        if (typeof sceneId === 'number') {
-            this._id = sceneId - 1;
+    function Scene(sceneId, name, uid) {
+        this._id = sceneId;
+        if (!version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.sceneUidMinVersion)) {
+            this._uid = uid;
+            this._name = name;
+            this._refID = uid;
         }
-        else if (typeof sceneId === 'string') {
-            this._id = sceneId;
+        else {
+            this._refID = sceneId;
         }
     }
     ;
-    Scene._initializeScenePool = function () {
-        if (Scene._scenePool.length === 0) {
-            for (var i = 0; i < Scene._maxScenes; i++) {
-                Scene._scenePool[i] = new Scene(i + 1);
-            }
-        }
-    };
     Scene._initializeScenePoolAsync = function () {
         return new Promise(function (resolve) {
-            app_1.App.get('presetcount').then(function (cnt) {
-                Scene._scenePool = [];
-                var count = Number(cnt);
+            Scene._scenePool = [];
+            app_1.App.getAsList('sceneconfig')
+                .then(function (jsonArr) {
                 if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.minVersion)) {
+                    var count = jsonArr.length;
                     (count > 12) ? Scene._maxScenes = count : Scene._maxScenes = 12;
                     for (var i = 0; i < Scene._maxScenes; i++) {
-                        Scene._scenePool[i] = new Scene(i + 1);
+                        Scene._scenePool[i] = new Scene(i);
                     }
                     // Add special scene for preview editor (i12)
                     Scene._scenePool.push(new Scene('i12'));
                     resolve(Scene._maxScenes);
                 }
                 else {
-                    if ((count + 1) !== Scene._scenePool.length) {
-                        for (var i = 0; i < count; i++) {
-                            Scene._scenePool[i] = new Scene(i + 1);
-                        }
-                        // Add special scene for preview editor (i12)
-                        Scene._scenePool.push(new Scene('i12'));
-                        resolve(count);
-                    }
+                    var count = 0;
+                    jsonArr
+                        .filter(function (json) { return json['tag'] === 'placement'; })
+                        .map(function (scene, index) {
+                        count++;
+                        Scene._scenePool[index] = new Scene(index, scene['name'], scene['id']);
+                    });
+                    // Add special scene for preview editor (i12)
+                    Scene._scenePool.push(new Scene('i12', 'i12', 'i12'));
+                    resolve(count);
                 }
             });
         });
@@ -5095,36 +5823,27 @@ var Scene = (function () {
      * ```
      */
     Scene.getBySceneUid = function (sceneUid) {
+        var _this = this;
         return new Promise(function (resolve, reject) {
-            var getScene = new Promise(function (sceneResolve) {
-                app_1.App.getAsList('presetconfig')
-                    .then(function (jsonArr) {
-                    var lastVal = jsonArr.length;
-                    var check = false;
-                    jsonArr.map(function (sceneJSON, idx) {
-                        if (sceneJSON['id'] === sceneUid) {
-                            sceneResolve(sceneJSON);
-                            check = true;
-                        }
-                        if (idx === lastVal - 1 && !check) {
-                            reject(Error('No matching Scene with the Unique ID provided.'));
-                        }
-                    });
-                });
-            });
-            getScene.then(function (sceneJSON) {
-                Scene.getByName(sceneJSON['name'])
-                    .then(function (scenes) {
-                    scenes.map(function (scene) {
-                        scene.getSceneUid()
-                            .then(function (uid) {
-                            if (sceneUid === uid) {
+            var isID = /^{[A-F0-9-]*}$/i.test(sceneUid);
+            if (!isID) {
+                reject(Error('Not a valid Unique ID format for a Scene'));
+            }
+            else {
+                _this._initializeScenePoolAsync().then(function () {
+                    var sceneLength = _this._scenePool.length;
+                    _this._scenePool.map(function (scene, idx) {
+                        scene.getSceneUid().then(function (uid) {
+                            if (uid === sceneUid) {
                                 resolve(scene);
+                            }
+                            if (sceneLength - 1 === idx) {
+                                reject(Error('No matching Scene with the Unique ID provided.'));
                             }
                         });
                     });
                 });
-            });
+            }
         });
     };
     /**
@@ -5141,27 +5860,19 @@ var Scene = (function () {
      * ```
      */
     Scene.getByName = function (sceneName) {
+        var _this = this;
         return new Promise(function (resolve) {
-            Scene._initializeScenePoolAsync().then(function (cnt) {
-                var namePromise = Promise.all(Scene._scenePool.map(function (scene, index) {
-                    return app_1.App.get('presetname:' + index).then(function (name) {
-                        if (sceneName === name) {
-                            return Scene._scenePool[index];
+            var sceneArr = [];
+            _this._initializeScenePoolAsync().then(function (count) {
+                _this._scenePool.map(function (scene, idx) {
+                    scene.getName().then(function (name) {
+                        if (name === sceneName) {
+                            sceneArr.push(scene);
                         }
-                        else {
-                            return null;
+                        if ((idx + 1) === count) {
+                            resolve(sceneArr);
                         }
                     });
-                }));
-                namePromise.then(function (results) {
-                    var returnArray = [];
-                    for (var j = 0; j < results.length; ++j) {
-                        if (results[j] !== null) {
-                            returnArray.push(results[j]);
-                        }
-                    }
-                    ;
-                    resolve(returnArray);
                 });
             });
         });
@@ -5187,9 +5898,9 @@ var Scene = (function () {
             }
             else {
                 app_1.App.getGlobalProperty('splitmode').then(function (res) {
-                    var preset = res === '1' ? 'preset:1' : 'preset:0';
+                    var preset = res === '1' ? 'scene:1' : 'scene:0';
                     app_1.App.get(preset).then(function (id) {
-                        return Scene.getById(Number(id) + 1);
+                        return Scene.getBySceneIndex(Number(id));
                     }).then(function (scene) {
                         resolve(scene);
                     });
@@ -5212,7 +5923,7 @@ var Scene = (function () {
             }
             else {
                 app_1.App.getGlobalProperty('splitmode').then(function (res) {
-                    var preset = res === '1' ? 'preset:1' : 'preset:0';
+                    var preset = res === '1' ? 'scene:1' : 'scene:0';
                     if (scene instanceof Scene) {
                         app_1.App.set(preset, String(scene._id)).then(function (res) {
                             resolve(res);
@@ -5854,11 +6565,11 @@ var Scene = (function () {
             }
             else {
                 if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.minVersion)) {
-                    app_1.App.get('presetcount').then(function (cnt) {
+                    app_1.App.get('scenecount').then(function (cnt) {
                         if (Number(cnt) < 12) {
                             // Insert an empty scene for scene #12
                             app_1.App
-                                .set('presetconfig:11', '<placement name="Scene 12" defpos="0" />')
+                                .set('sceneconfig:11', '<placement name="Scene 12" defpos="0" />')
                                 .then(function (res) {
                                 resolve(res);
                             });
@@ -5871,6 +6582,258 @@ var Scene = (function () {
                 else {
                     resolve(true);
                 }
+            }
+        });
+    };
+    /**
+     * return: Scene
+     *
+     * Returns a special `liveScene` object that may be added as a source to the stage.
+     * The Scene.liveScene object whenever called upon,
+     * gives access to the current active scene.
+     * This is made possible because the liveScene object does not pertain to a real scene
+     * in the context of XBC, but the actual view,
+     * or at least the scene which is currently loaded in that view.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * var xjs = require('xjs');
+     * xjs.Scene.liveScene().addAsSource();
+     * ```
+     */
+    Scene.liveScene = function () {
+        var _this = this;
+        if (Scene._liveScene === undefined) {
+            Scene._liveScene = new Scene('LIVE', 'Live Scene', '0');
+            Scene._liveScene.getSources = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getSources();
+                    }).then(function (sources) {
+                        resolve(sources);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.getSceneNumber = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getSceneNumber();
+                    }).then(function (sceneNumber) {
+                        resolve(sceneNumber);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.getSceneIndex = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getSceneIndex();
+                    }).then(function (sceneIndex) {
+                        resolve(sceneIndex);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.getSceneUid = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getSceneUid();
+                    }).then(function (sceneUID) {
+                        resolve(sceneUID);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.getName = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getName();
+                    }).then(function (name) {
+                        resolve(name);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.setName = function (name) {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.setName(name);
+                    }).then(function (setFlag) {
+                        resolve(setFlag);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.getItems = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getItems();
+                    }).then(function (items) {
+                        resolve(items);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.getTopLevelItems = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getTopLevelItems();
+                    }).then(function (items) {
+                        resolve(items);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.isEmpty = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.isEmpty();
+                    }).then(function (empty) {
+                        resolve(empty);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.setItemOrder = function (items) {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.setItemOrder(items);
+                    }).then(function (sources) {
+                        resolve(_this);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.getPresets = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getPresets();
+                    }).then(function (presets) {
+                        resolve(presets);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.getActivePreset = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getActivePreset();
+                    }).then(function (preset) {
+                        resolve(preset);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.switchToPreset = function (preset) {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.switchToPreset(preset);
+                    }).then(function (setFlag) {
+                        resolve(setFlag);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.addPreset = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.addPreset();
+                    }).then(function (preset) {
+                        resolve(preset);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.removePreset = function (preset) {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.removePreset(preset);
+                    }).then(function (setFlag) {
+                        resolve(setFlag);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.getPresetTransitionEasing = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getPresetTransitionEasing();
+                    }).then(function (easing) {
+                        resolve(easing);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.setPresetTransitionEasing = function (presetTransitionEasing) {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.setPresetTransitionEasing(presetTransitionEasing);
+                    }).then(function (setFlag) {
+                        resolve(setFlag);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.getPresetTransitionTime = function () {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.getPresetTransitionTime();
+                    }).then(function (time) {
+                        resolve(time);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+            Scene._liveScene.setPresetTransitionTime = function (presetTransitionTime) {
+                return new Promise(function (resolve, reject) {
+                    Scene.getActiveScene()
+                        .then(function (activeScene) {
+                        return activeScene.setPresetTransitionTime(presetTransitionTime);
+                    }).then(function (setFlag) {
+                        resolve(setFlag);
+                    }).catch(function (err) { return reject(err); });
+                });
+            };
+        }
+        return Scene._liveScene;
+    };
+    /**
+     * param: (value?: number | Scene)
+     * ```
+     * return: Promise<any>
+     * ```
+     *
+     * Adds this scene as a source to the current scene by default.
+     * Accepts an optional parameter value, which, when supplied,
+     * points to the scene where item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
+     *
+     * Note: There is yet no way to detect error responses for this action.
+     */
+    Scene.prototype.addAsSource = function (value) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (!version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.sceneSourceVersion)) {
+                splitmode_1.checkSplitmode(value).then(function (scenePrefix) {
+                    var sceneToAdd = new json_1.JSON();
+                    sceneToAdd.tag = 'item';
+                    sceneToAdd['item'] = _this._uid;
+                    sceneToAdd['name'] = _this._name;
+                    sceneToAdd['type'] = (_this._uid === '0') ? isource_1.ItemTypes.VIEW : isource_1.ItemTypes.SCENE; // type LIVE
+                    sceneToAdd['selfclosing'] = true;
+                    var sceneXML = xml_1.XML.parseJSON(sceneToAdd);
+                    return addtosceneutil_1.addToSceneHandler(scenePrefix + 'additem', sceneXML.toString());
+                }).then(function (result) {
+                    resolve(result);
+                }).catch(function (err) {
+                    reject(err);
+                });
+            }
+            else {
+                reject(Error('Not supported in this XBC version'));
             }
         });
     };
@@ -5896,53 +6859,15 @@ var Scene = (function () {
     Scene.prototype.getSources = function () {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            app_1.App.getAsList('presetconfig:' + _this._id).then(function (jsonArr) {
+            app_1.App.getAsItemList('sceneconfig:' + _this._refID).then(function (jsonArr) {
                 var promiseArray = [];
                 var uniqueObj = {};
                 var uniqueSrc = [];
                 // type checking to return correct Source subtype
                 var typePromise = function (index) { return new Promise(function (typeResolve) {
                     var source = jsonArr[index];
-                    var type = Number(source['type']);
-                    if (type === isource_1.ItemTypes.GAMESOURCE) {
-                        typeResolve(new game_1.GameSource(source));
-                    }
-                    else if ((type === isource_1.ItemTypes.HTML || type === isource_1.ItemTypes.FILE) &&
-                        source['name'].indexOf('Video Playlist') === 0 &&
-                        source['FilePlaylist'] !== '') {
-                        typeResolve(new videoplaylist_1.VideoPlaylistSource(source));
-                    }
-                    else if (type === isource_1.ItemTypes.HTML) {
-                        typeResolve(new html_1.HtmlSource(source));
-                    }
-                    else if (type === isource_1.ItemTypes.SCREEN) {
-                        typeResolve(new screen_1.ScreenSource(source));
-                    }
-                    else if (type === isource_1.ItemTypes.BITMAP ||
-                        type === isource_1.ItemTypes.FILE &&
-                            /\.gif$/.test(source['item'])) {
-                        typeResolve(new image_1.ImageSource(source));
-                    }
-                    else if (type === isource_1.ItemTypes.FILE &&
-                        /\.(gif|xbs)$/.test(source['item']) === false &&
-                        /^(rtsp|rtmp):\/\//.test(source['item']) === false &&
-                        new RegExp(media_1.MediaTypes.join('|')).test(source['item']) === true) {
-                        typeResolve(new media_1.MediaSource(source));
-                    }
-                    else if (Number(source['type']) === isource_1.ItemTypes.LIVE &&
-                        source['item'].indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') === -1) {
-                        typeResolve(new camera_1.CameraSource(source));
-                    }
-                    else if (Number(source['type']) === isource_1.ItemTypes.LIVE &&
-                        source['item'].indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') !== -1) {
-                        typeResolve(new audio_1.AudioSource(source));
-                    }
-                    else if (Number(source['type']) === isource_1.ItemTypes.FLASHFILE) {
-                        typeResolve(new flash_1.FlashSource(source));
-                    }
-                    else {
-                        typeResolve(new source_1.Source(source));
-                    }
+                    var srcType = sourcetyperesolve_1.SourceTypeResolve(source);
+                    typeResolve(srcType);
                 }); };
                 if (Array.isArray(jsonArr)) {
                     for (var i = 0; i < jsonArr.length; i++) {
@@ -5971,7 +6896,7 @@ var Scene = (function () {
         });
     };
     /**
-     * return: number
+     * return: Promise<number>
      *
      * Get the 1-indexed scene number of this scene object.
      *
@@ -5989,16 +6914,31 @@ var Scene = (function () {
     Scene.prototype.getSceneNumber = function () {
         var _this = this;
         return new Promise(function (resolve) {
-            if (typeof _this._id === 'number') {
-                resolve(Number(_this._id) + 1);
+            var curUid = _this._uid;
+            if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.sceneUidMinVersion)) {
+                if (typeof _this._id === 'number') {
+                    resolve(Number(_this._id) + 1);
+                }
+                else {
+                    resolve(_this._id);
+                }
             }
             else {
-                resolve(_this._id);
+                Scene._initializeScenePoolAsync().then(function () {
+                    return Scene.getBySceneUid(curUid);
+                }).then(function (curScene) {
+                    if (typeof curScene !== 'number') {
+                        resolve(Number(curScene._id) + 1);
+                    }
+                    else {
+                        resolve(curScene._id);
+                    }
+                });
             }
         });
     };
     /**
-     * return: number
+     * return: Promise<number>
      *
      * Get the 0-indexed scene number of this scene object.
      *
@@ -6014,19 +6954,29 @@ var Scene = (function () {
     Scene.prototype.getSceneIndex = function () {
         var _this = this;
         return new Promise(function (resolve) {
-            if (typeof _this._id !== 'number') {
-                resolve(Number(_this._id));
+            var curUid = _this._uid;
+            if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.sceneUidMinVersion)) {
+                if (typeof _this._id !== 'number') {
+                    resolve(Number(_this._id));
+                }
+                else {
+                    resolve(_this._id);
+                }
             }
             else {
-                resolve(_this._id);
+                Scene._initializeScenePoolAsync().then(function () {
+                    return Scene.getBySceneUid(curUid);
+                }).then(function (curScene) {
+                    resolve(curScene._id);
+                });
             }
         });
     };
     /**
-     * return: string
+     * return: Promise<string>
      *
      * Get the unique id of this scene object.
-     *
+     * Scenes unique id is only available for XBC v.3.0.1704.2101 or higher.
      *
      * #### Usage
      *
@@ -6037,21 +6987,18 @@ var Scene = (function () {
      * ```
      */
     Scene.prototype.getSceneUid = function () {
-        var sceneName;
-        this.getName().then(function (name) { return sceneName = name; });
-        return new Promise(function (resolve) {
-            app_1.App.getAsList('presetconfig')
-                .then(function (jsonArr) {
-                jsonArr.map(function (scene) {
-                    if (scene['name'] === sceneName) {
-                        resolve(scene['id']);
-                    }
-                });
-            });
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (!version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.sceneUidMinVersion)) {
+                resolve(_this._uid);
+            }
+            else {
+                reject(Error('Scenes unique id is only available for XBC v.3.0.1704.2101 or higher'));
+            }
         });
     };
     /**
-     * return: number
+     * return: Promise<string>
      *
      * Get the name of this scene object.
      *
@@ -6067,7 +7014,7 @@ var Scene = (function () {
     Scene.prototype.getName = function () {
         var _this = this;
         return new Promise(function (resolve) {
-            app_1.App.get('presetname:' + _this._id).then(function (val) {
+            app_1.App.get('scenename:' + _this._refID).then(function (val) {
                 resolve(val);
             });
         });
@@ -6085,11 +7032,144 @@ var Scene = (function () {
     Scene.prototype.setName = function (name) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (environment_1.Environment.isSourcePlugin()) {
-                reject(Error('Scene names are readonly for source plugins.'));
+            if (!environment_1.Environment.isSourceProps()) {
+                reject(Error('Scene names are readonly for source plugins and extensions.'));
             }
             else {
-                app_1.App.set('presetname:' + _this._id, name).then(function (value) {
+                app_1.App.set('scenename:' + _this._refID, name).then(function (value) {
+                    resolve(value);
+                });
+            }
+        });
+    };
+    /**
+     * return: Promise<string>
+     *
+     * Get the transition override of this scene object.
+     * Transition overrides take priority over the more generic one from App.GetTransition
+     * See also: {@link #core/Transition Core/Transition} and {@link #core/App#getTransition getTransition}
+     *
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * myScene.getTransitionOverride().then(function(transition) {
+     *  // do something here
+     * });
+     * ```
+     */
+    Scene.prototype.getTransitionOverride = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            app_1.App.get('scenetransitionid:' + _this._refID).then(function (val) {
+                if (val === '') {
+                    resolve(transition_1.Transition.NONE);
+                }
+                else {
+                    var currTransition = transition_1.Transition[val.toUpperCase()];
+                    if (typeof currTransition !== 'undefined') {
+                        resolve(currTransition);
+                    }
+                    else {
+                        transition_1.Transition.getSceneTransitions().then(function (transitions) {
+                            var inTransition = false;
+                            var transitionObj;
+                            var i;
+                            for (i = 0; i < transitions.length; i++) {
+                                transitionObj = transitions[i];
+                                if (transitionObj.toString() === val) {
+                                    inTransition = true;
+                                    break;
+                                }
+                            }
+                            if (inTransition) {
+                                resolve(transitionObj);
+                            }
+                            else {
+                                resolve(new transition_1.Transition(val));
+                            }
+                        }).catch(function (err) {
+                            resolve(new transition_1.Transition(val));
+                        });
+                    }
+                }
+            });
+        });
+    };
+    /**
+     * param: (value: string)
+     * Set the transition override of this scene object.
+     * Transition overrides take priority over the more generic one from App.GetTransition
+     * See also: {@link #core/Transition Core/Transition} and {@link #core/App#setTransition setTransition}
+     *
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * myScene.setTransitionOverride('xjs.Transition.CLOCK');
+     * ```
+     */
+    Scene.prototype.setTransitionOverride = function (value) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Scene transition overrides are readonly for source plugins.'));
+            }
+            else {
+                app_1.App.set('scenetransitionid:' + _this._refID, value instanceof transition_1.Transition ? value.toString() : value)
+                    .then(function (value) {
+                    resolve(value);
+                }).catch(function (err) {
+                    reject(Error('Invalid parameter. Only Transition objects or transition strings are allowed.'));
+                });
+            }
+        });
+    };
+    /**
+     * return: Promise<number>
+     *
+     * Get the transition time override of this scene object.
+     * The scene transition time override will only take effect
+     * if the scene transition override itself is not equal to ''(Transition.NONE)
+     *
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * myScene.getTransitionTime().then(function(time) {
+     *  // do something here
+     * });
+     * ```
+     */
+    Scene.prototype.getTransitionTime = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            app_1.App.get('scenetransitiontime:' + _this._refID).then(function (val) {
+                resolve(Number(val));
+            });
+        });
+    };
+    /**
+     * param: (value: string)
+     *
+     * Set the transition time override of this scene object.
+     * The scene transition time override will only take effect
+     * if the scene transition override itself is not equal to ''(Transition.NONE)
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * myScene.setTransitionTime(1000);
+     * ```
+     */
+    Scene.prototype.setTransitionTime = function (time) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Scene transition overrides are readonly for source plugins.'));
+            }
+            else {
+                app_1.App.set('scenetransitiontime:' + _this._refID, String(time)).then(function (value) {
                     resolve(value);
                 });
             }
@@ -6112,51 +7192,52 @@ var Scene = (function () {
     Scene.prototype.getItems = function () {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            app_1.App.getAsList('presetconfig:' + _this._id).then(function (jsonArr) {
+            app_1.App.getAsItemList('sceneconfig:' + _this._refID).then(function (jsonArr) {
                 var promiseArray = [];
                 // type checking to return correct Source subtype
                 var typePromise = function (index) { return new Promise(function (typeResolve) {
                     var item = jsonArr[index];
-                    var type = Number(item['type']);
-                    if (type === isource_1.ItemTypes.GAMESOURCE) {
-                        typeResolve(new game_2.GameItem(item));
+                    var itemType = itemtyperesolve_1.ItemTypeResolve(item);
+                    typeResolve(itemType);
+                }); };
+                if (Array.isArray(jsonArr)) {
+                    for (var i = 0; i < jsonArr.length; i++) {
+                        jsonArr[i]['sceneId'] = _this._id;
+                        promiseArray.push(typePromise(i));
                     }
-                    else if ((type === isource_1.ItemTypes.HTML || type === isource_1.ItemTypes.FILE) &&
-                        item['name'].indexOf('Video Playlist') === 0 &&
-                        item['FilePlaylist'] !== '') {
-                        typeResolve(new videoplaylist_2.VideoPlaylistItem(item));
-                    }
-                    else if (type === isource_1.ItemTypes.HTML) {
-                        typeResolve(new html_2.HtmlItem(item));
-                    }
-                    else if (type === isource_1.ItemTypes.SCREEN) {
-                        typeResolve(new screen_2.ScreenItem(item));
-                    }
-                    else if (type === isource_1.ItemTypes.BITMAP ||
-                        type === isource_1.ItemTypes.FILE &&
-                            /\.gif$/.test(item['item'])) {
-                        typeResolve(new image_2.ImageItem(item));
-                    }
-                    else if (type === isource_1.ItemTypes.FILE &&
-                        /\.(gif|xbs)$/.test(item['item']) === false &&
-                        /^(rtsp|rtmp):\/\//.test(item['item']) === false &&
-                        new RegExp(media_1.MediaTypes.join('|')).test(item['item']) === true) {
-                        typeResolve(new media_2.MediaItem(item));
-                    }
-                    else if (Number(item['type']) === isource_1.ItemTypes.LIVE &&
-                        item['item'].indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') === -1) {
-                        typeResolve(new camera_2.CameraItem(item));
-                    }
-                    else if (Number(item['type']) === isource_1.ItemTypes.LIVE &&
-                        item['item'].indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') !== -1) {
-                        typeResolve(new audio_2.AudioItem(item));
-                    }
-                    else if (Number(item['type']) === isource_1.ItemTypes.FLASHFILE) {
-                        typeResolve(new flash_2.FlashItem(item));
-                    }
-                    else {
-                        typeResolve(new item_1.Item(item));
-                    }
+                }
+                Promise.all(promiseArray).then(function (results) {
+                    resolve(results);
+                });
+            }).catch(function (err) {
+                reject(err);
+            });
+        });
+    };
+    /**
+     * return: Promise<Item[]>
+     *
+     * Gets all non-child Items (not belonging to a group) in a specific scene
+     * See also: {@link #core/Item Core/Item}
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * myScene.getTopLevelItems().then(function(items) {
+     *  // do something to each item in items array
+     * });
+     * ```
+     */
+    Scene.prototype.getTopLevelItems = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            app_1.App.getAsList('sceneconfig:' + _this._refID).then(function (jsonArr) {
+                var promiseArray = [];
+                // type checking to return correct Source subtype
+                var typePromise = function (index) { return new Promise(function (typeResolve) {
+                    var item = jsonArr[index];
+                    var itemType = itemtyperesolve_1.ItemTypeResolve(item);
+                    typeResolve(itemType);
                 }); };
                 if (Array.isArray(jsonArr)) {
                     for (var i = 0; i < jsonArr.length; i++) {
@@ -6190,20 +7271,20 @@ var Scene = (function () {
     Scene.prototype.isEmpty = function () {
         var _this = this;
         return new Promise(function (resolve) {
-            app_1.App.get('presetisempty:' + _this._id).then(function (val) {
+            app_1.App.get('sceneisempty:' + _this._refID).then(function (val) {
                 resolve(val === '1');
             });
         });
     };
     /**
-   * param: Array<Item> | Array<string> (item IDs)
-   * ```
-   * return: Promise<Scene>
-   * ```
-   *
-   * Sets the item order of the current scene. The first item in the array
-   * will be on top (will cover items below it).
-   */
+     * param: Array<Item> | Array<string> (item IDs)
+     * ```
+     * return: Promise<Scene>
+     * ```
+     *
+     * Sets the item order of the current scene. The first item in the array
+     * will be on top (will cover items below it).
+     */
     Scene.prototype.setItemOrder = function (items) {
         var _this = this;
         return new Promise(function (resolve, reject) {
@@ -6248,7 +7329,7 @@ var Scene = (function () {
                         var sceneName;
                         _this.getName().then(function (name) {
                             sceneName = name;
-                            return app_1.App.getAsList('presetconfig:' + _this._id);
+                            return app_1.App.getAsList('sceneconfig:' + _this._refID);
                         }).then(function (jsonArr) {
                             var newOrder = new json_1.JSON();
                             newOrder.children = [];
@@ -6266,7 +7347,7 @@ var Scene = (function () {
                                     }
                                     newOrder.children[ids.indexOf(jsonArr[i]['id'])] = jsonArr[i];
                                 }
-                                app_1.App.set('presetconfig:' + _this._id, 
+                                app_1.App.set('sceneconfig:' + _this._refID, 
                                 //Revert back the formatting from json when transforming to xml
                                 xml_1.XML.parseJSON(newOrder).toString().replace(/\\\\/g, '\\')).then(function () {
                                     resolve(_this);
@@ -6281,12 +7362,324 @@ var Scene = (function () {
             }
         });
     };
+    /**
+     * return: Promise<string[]>
+     *
+     * Get all presets for the scene, returns an array of preset UIDs
+     * Does not work on source plugins.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * myScene.getPresets().then(function(presets) {
+     *  // do something to each preset UID in UIDs array
+     * });
+     * ```
+     */
+    Scene.prototype.getPresets = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Not supported on source plugins'));
+            }
+            else if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.scenePresetsVersion)) {
+                reject(Error('Not supported in this XBC version'));
+            }
+            else {
+                var presetArray = ['{00000000-0000-0000-0000-000000000000}'];
+                app_1.App.get('scenepresetlist:' + _this._uid).then(function (presetlist) {
+                    if (presetlist !== '') {
+                        presetArray.push.apply(presetArray, (presetlist.split(',')));
+                    }
+                    resolve(presetArray);
+                });
+            }
+        });
+    };
+    /**
+     * return: Promise<string>
+     *
+     * Get the UID of the active preset.
+     * Does not work on source plugins.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * myScene.getActivePreset().then(function(preset) {
+     *  console.log('Active preset UID is ' + preset);
+     * });
+     * ```
+     */
+    Scene.prototype.getActivePreset = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Not supported on source plugins'));
+            }
+            else if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.scenePresetsVersion)) {
+                reject(Error('Not supported in this XBC version'));
+            }
+            else {
+                app_1.App.get('scenepreset:' + _this._uid).then(function (value) {
+                    resolve(value);
+                });
+            }
+        });
+    };
+    /**
+     * param: (preset: string)
+     * ```
+     * return: Promise<boolean>
+     * ```
+     * Switch to the specified preset for the scene.
+     * Does not work on source plugins.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     *
+     * myScene.getPresets()
+     * .then(presets => {
+     *   const lastPreset = presets.pop()
+     *   return myScene.switchToPreset(lastPreset);
+     * })
+     * .then(isSwitched => {
+     *   console.log('switched to preset : ' + isSwitched)
+     * });
+     * ```
+     */
+    Scene.prototype.switchToPreset = function (preset) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Not supported on source plugins'));
+            }
+            else if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.scenePresetsVersion)) {
+                reject(Error('Not supported in this XBC version'));
+            }
+            else {
+                app_1.App.set('scenepreset:' + _this._uid, preset).then(function (value) {
+                    if (value) {
+                        resolve(value);
+                    }
+                    else {
+                        reject(Error('Cannot switch to preset or preset non-existent'));
+                    }
+                });
+            }
+        });
+    };
+    /**
+     * return: Promise<string>
+     *
+     * Add a new preset to the scene, returns the UID of the new preset
+     * Does not work on source plugins.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * myScene.addPreset().then(function(preset) {
+     *  console.log('New preset UID is ' + preset);
+     * });
+     * ```
+     */
+    Scene.prototype.addPreset = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Not supported on source plugins'));
+            }
+            else if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.scenePresetsVersion)) {
+                reject(Error('Not supported in this XBC version'));
+            }
+            else {
+                app_1.App.get('scenenewpreset:' + _this._uid).then(function (value) {
+                    resolve(value);
+                });
+            }
+        });
+    };
+    /**
+     * param: (preset: string)
+     * ```
+     * return: Promise<boolean>
+     * ```
+     * Remove the specified preset for the scene.
+     * Does not work on source plugins.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     *
+     * myScene.removePreset(lastPreset)
+     * .then(isRemoved => {
+     *   console.log('preset is removed : ' + isRemoved)
+     * });
+     * ```
+     */
+    Scene.prototype.removePreset = function (preset) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Not supported on source plugins'));
+            }
+            else if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.scenePresetsVersion)) {
+                reject(Error('Not supported in this XBC version'));
+            }
+            else if (preset === '{00000000-0000-0000-0000-000000000000}') {
+                reject(Error('Cannot delete the default preset'));
+            }
+            else {
+                app_1.App.set('sceneremovepreset:' + _this._uid, preset).then(function (value) {
+                    if (value) {
+                        resolve(value);
+                    }
+                    else {
+                        reject(Error('Cannot delete preset or preset non-existent'));
+                    }
+                });
+            }
+        });
+    };
+    /**
+     * return: Promise<string>
+     *
+     * Get the preset transition easing function for the scene.
+     * Does not work on source plugins.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * myScene.getPresetTransition().then(function(presetTransition) {
+     *  console.log('Preset transition is ' + presetTransition);
+     * });
+     * ```
+     */
+    Scene.prototype.getPresetTransitionEasing = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Not supported on source plugins'));
+            }
+            else if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.scenePresetsVersion)) {
+                reject(Error('Not supported in this XBC version'));
+            }
+            else {
+                app_1.App.get('scenepresettransitionfunc:' + _this._uid).then(function (value) {
+                    if (value === '') {
+                        value = 'none';
+                    }
+                    resolve(value);
+                });
+            }
+        });
+    };
+    /**
+     * param: (presetTransitionEasing: string)
+     * ```
+     * return: Promise<boolean>
+     * ```
+     * Switch to the specified preset transition easing function for the scene
+     * Possible values ('' or 'none', 'easeInCubic', 'easeOutCubic', 'easeInOutCubic')
+     * Does not work on source plugins.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     *
+     * myScene.setPresetTransitionEasing('easeInCubic');
+     * ```
+     */
+    Scene.prototype.setPresetTransitionEasing = function (presetTransitionEasing) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Not supported on source plugins'));
+            }
+            else if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.scenePresetsVersion)) {
+                reject(Error('Not supported in this XBC version'));
+            }
+            else if (supportedPresetTransitionEasingFunctions.indexOf(presetTransitionEasing) < 0) {
+                reject(Error('Easing function not supported for preset transitions'));
+            }
+            else {
+                presetTransitionEasing = presetTransitionEasing === 'none' ? '' : presetTransitionEasing;
+                app_1.App.set('scenepresettransitionfunc:' + _this._uid, presetTransitionEasing).then(function (value) {
+                    resolve(value);
+                });
+            }
+        });
+    };
+    /**
+     * return: Promise<number>
+     *
+     * Get the preset transition time for the scene, in ms
+     * Does not work on source plugins.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * myScene.getPresetTransitionTime().then(function(presetTransitionTime) {
+     *  console.log('Preset transition time is ' + presetTransitionTime);
+     * });
+     * ```
+     */
+    Scene.prototype.getPresetTransitionTime = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Not supported on source plugins'));
+            }
+            else if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.scenePresetsVersion)) {
+                reject(Error('Not supported in this XBC version'));
+            }
+            else {
+                app_1.App.get('scenepresettransitiontime:' + _this._uid).then(function (value) {
+                    resolve(Number(value));
+                });
+            }
+        });
+    };
+    /**
+     * param: (presetTransitionTime: number)
+     * ```
+     * return: Promise<boolean>
+     * ```
+     * Set the preset transition time for the scene, in ms
+     * Does not work on source plugins.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     *
+     * myScene.setPresetTransitionTime(500);
+     * ```
+     */
+    Scene.prototype.setPresetTransitionTime = function (presetTransitionTime) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (environment_1.Environment.isSourcePlugin()) {
+                reject(Error('Not supported on source plugins'));
+            }
+            else if (version_1.versionCompare(version_1.getVersion()).is.lessThan(version_1.scenePresetsVersion)) {
+                reject(Error('Not supported in this XBC version'));
+            }
+            else if (typeof presetTransitionTime !== 'number') {
+                reject(Error('Parameter must be a number'));
+            }
+            else {
+                app_1.App.set('scenepresettransitiontime:' + _this._uid, String(presetTransitionTime)).then(function (value) {
+                    resolve(value);
+                });
+            }
+        });
+    };
     Scene._maxScenes = 12;
     Scene._scenePool = [];
     return Scene;
 })();
 exports.Scene = Scene;
-},{"../internal/app":49,"../internal/internal":53,"../internal/util/json":56,"../internal/util/version":59,"../internal/util/xml":60,"./environment":4,"./items/audio":6,"./items/camera":7,"./items/flash":8,"./items/game":9,"./items/html":10,"./items/image":15,"./items/item":16,"./items/media":18,"./items/screen":19,"./items/videoplaylist":20,"./source/audio":24,"./source/camera":25,"./source/flash":27,"./source/game":28,"./source/html":29,"./source/image":37,"./source/isource":41,"./source/media":43,"./source/screen":44,"./source/source":45,"./source/videoplaylist":46}],24:[function(require,module,exports){
+},{"../internal/app":61,"../internal/internal":65,"../internal/util/json":68,"../internal/util/splitmode":71,"../internal/util/version":72,"../internal/util/xml":73,"../util/addtosceneutil":85,"../util/itemtyperesolve":89,"../util/sourcetyperesolve":92,"./environment":4,"./items/item":20,"./source/isource":50,"./source/source":56,"./transition":60}],30:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -6336,8 +7729,8 @@ var AudioSource = (function (_super) {
     return AudioSource;
 })(source_1.Source);
 exports.AudioSource = AudioSource;
-mixin_1.applyMixins(AudioSource, [iaudiosource_1.SourceAudio, iaudio_1.Audio]);
-},{"../../internal/util/mixin":58,"../source/iaudio":30,"../source/iaudiosource":31,"../source/source":45}],25:[function(require,module,exports){
+mixin_1.applyMixins(AudioSource, [iaudio_1.Audio, iaudiosource_1.SourceAudio]);
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/iaudiosource":37,"../source/source":56}],31:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -6388,7 +7781,7 @@ var CameraSource = (function (_super) {
 })(source_1.Source);
 exports.CameraSource = CameraSource;
 mixin_1.applyMixins(CameraSource, [iaudio_1.Audio, icamera_1.SourceCamera]);
-},{"../../internal/util/mixin":58,"../source/iaudio":30,"../source/icamera":32,"../source/source":45}],26:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/icamera":38,"../source/source":56}],32:[function(require,module,exports){
 /**
  *  A CuePoint represents a configurable object for sources that
  *  support cue points. Check `getCuePoints()` and other related methods of
@@ -6454,7 +7847,7 @@ var CuePoint = (function () {
     return CuePoint;
 })();
 exports.CuePoint = CuePoint;
-},{}],27:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -6505,7 +7898,7 @@ var FlashSource = (function (_super) {
 })(source_1.Source);
 exports.FlashSource = FlashSource;
 mixin_1.applyMixins(FlashSource, [iaudio_1.Audio, iflash_1.SourceFlash]);
-},{"../../internal/util/mixin":58,"../source/iaudio":30,"../source/source":45,"./iflash":34}],28:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/source":56,"./iflash":40}],34:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -6555,7 +7948,7 @@ var GameSource = (function (_super) {
 })(source_1.Source);
 exports.GameSource = GameSource;
 mixin_1.applyMixins(GameSource, [igame_1.iSourceGame]);
-},{"../../internal/util/mixin":58,"../source/source":45,"./igame":35}],29:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"../source/source":56,"./igame":41}],35:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -6607,7 +8000,7 @@ var HtmlSource = (function (_super) {
 })(source_1.Source);
 exports.HtmlSource = HtmlSource;
 mixin_1.applyMixins(HtmlSource, [ihtml_1.iSourceHtml, iconfig_1.SourceConfigurable, iaudio_1.Audio]);
-},{"../../internal/util/mixin":58,"../source/iaudio":30,"../source/ihtml":36,"../source/source":45,"./iconfig":33}],30:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/ihtml":42,"../source/source":56,"./iconfig":39}],36:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var logger_1 = require('../../internal/util/logger');
@@ -6626,7 +8019,7 @@ var Audio = (function () {
                 _this._checkPromise = item_1.Item.get('prop:volume', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:volume', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:volume', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(Number(val));
@@ -6657,7 +8050,7 @@ var Audio = (function () {
                 _this._checkPromise = item_1.Item.get('prop:mute', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:mute', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:mute', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(val === '1');
@@ -6687,7 +8080,7 @@ var Audio = (function () {
                 _this._checkPromise = item_1.Item.get('prop:keepaudio', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:keepaudio', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:keepaudio', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(val !== '1');
@@ -6717,7 +8110,7 @@ var Audio = (function () {
                 _this._checkPromise = item_1.Item.get('prop:sounddev', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:sounddev', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:sounddev', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(val === '1');
@@ -6747,7 +8140,7 @@ var Audio = (function () {
                 _this._checkPromise = item_1.Item.get('prop:audioavail', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:audioavail', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:audioavail', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(val === '1');
@@ -6757,10 +8150,12 @@ var Audio = (function () {
     return Audio;
 })();
 exports.Audio = Audio;
-},{"../../internal/item":54,"../../internal/util/logger":57}],31:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/logger":69}],37:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var logger_1 = require('../../internal/util/logger');
+var system_1 = require('../../system/system');
+var microphone_1 = require('../../system/microphone');
 var SourceAudio = (function () {
     function SourceAudio() {
     }
@@ -6926,21 +8321,87 @@ var SourceAudio = (function () {
             }
         });
     };
+    SourceAudio.prototype.getValue = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'getValue', true);
+                _this._checkPromise = item_1.Item.get('prop:srcitem', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function (filename) {
+                resolve(filename);
+            });
+        });
+    };
+    ;
+    SourceAudio.prototype.setValue = function (micDevice) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var audioName;
+            var _getName;
+            if (micDevice instanceof microphone_1.MicrophoneDevice) {
+                _getName = new Promise(function (innerResolve) {
+                    var name = micDevice.getName();
+                    micDevice = micDevice.getDisplayId();
+                    innerResolve(name);
+                });
+            }
+            else if (typeof micDevice === 'string') {
+                _getName = new Promise(function (innerResolve) {
+                    system_1.System.getMicrophones()
+                        .then(function (micDevices) {
+                        var camGiven = micDevices.filter(function (cam) {
+                            return cam.getDisplayId().toUpperCase() === micDevice.toUpperCase();
+                        });
+                        if (camGiven) {
+                            innerResolve(camGiven[0].getName());
+                        }
+                        else {
+                            innerResolve('');
+                        }
+                    });
+                });
+            }
+            else {
+                reject(TypeError('Parameter should either be a MicrophoneDevice or string.'));
+            }
+            _getName.then(function (name) {
+                audioName = name;
+                if (_this._isItemCall) {
+                    logger_1.Logger.warn('sourceWarning', 'setValue', true);
+                    return item_1.Item.set('prop:item', micDevice, _this._id);
+                }
+                else {
+                    return item_1.Item.wrapSet('prop:srcitem', micDevice, _this._srcId, _this._id, _this._updateId.bind(_this));
+                }
+            }).then(function () {
+                return item_1.Item.set('prop:name', audioName, _this._id);
+            })
+                .then(function () {
+                resolve(_this);
+            });
+        });
+    };
     return SourceAudio;
 })();
 exports.SourceAudio = SourceAudio;
-},{"../../internal/item":54,"../../internal/util/logger":57}],32:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/logger":69,"../../system/microphone":79,"../../system/system":82}],38:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
+var rectangle_1 = require('../../util/rectangle');
 var item_1 = require('../../internal/item');
+var camera_1 = require('../../system/camera');
 var system_1 = require('../../system/system');
 var logger_1 = require('../../internal/util/logger');
+var _delayExclusionObject = {
+    roxio: "vid_1b80&pid_e0(01|11|12)",
+    hauppauge1: "vid_2040&pid_49(0[0-3]|8[0-3])",
+    hauppauge2: "vid_2040&pid_e50[012a4]"
+};
 var SourceCamera = (function () {
     function SourceCamera() {
-        this._delayExclusionObject = {
-            roxio: "vid_1b80&pid_e0(01|11|12)",
-            hauppauge1: "vid_2040&pid_49(0[0-3]|8[0-3])",
-            hauppauge2: "vid_2040&pid_e50[012a4]"
-        };
     }
     SourceCamera.prototype._updateId = function (id, sceneId) {
         this._id = id;
@@ -6960,6 +8421,15 @@ var SourceCamera = (function () {
                     resolve(val);
                 });
             }
+        });
+    };
+    SourceCamera.prototype.getResolution = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            item_1.Item.get('prop:resolution', _this._id).then(function (val) {
+                var _a = val.split(',').map(Number), width = _a[0], height = _a[1];
+                resolve(rectangle_1.Rectangle.fromDimensions(width, height));
+            });
         });
     };
     SourceCamera.prototype.getAudioOffset = function () {
@@ -7208,8 +8678,8 @@ var SourceCamera = (function () {
                     return _this.getValue();
                 }
             }).then(function (val) {
-                for (var key in _this._delayExclusionObject) {
-                    var regex = new RegExp(_this._delayExclusionObject[key].toLowerCase(), 'g');
+                for (var key in _delayExclusionObject) {
+                    var regex = new RegExp(_delayExclusionObject[key].toLowerCase(), 'g');
                     if (typeof val === 'string' && val.toLowerCase().match(regex) != null) {
                         reject(Error('Cannot set delay to specific device'));
                         break;
@@ -7275,10 +8745,74 @@ var SourceCamera = (function () {
             }
         });
     };
+    SourceCamera.prototype.getValue = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'getValue', true);
+                _this._checkPromise = item_1.Item.get('prop:srcitem', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function (filename) {
+                resolve(filename);
+            });
+        });
+    };
+    ;
+    SourceCamera.prototype.setValue = function (camDevice) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var camName;
+            var _getName;
+            if (camDevice instanceof camera_1.CameraDevice) {
+                _getName = new Promise(function (innerResolve) {
+                    var name = camDevice.getName();
+                    camDevice = camDevice.getId();
+                    innerResolve(name);
+                });
+            }
+            else if (typeof camDevice === 'string') {
+                _getName = new Promise(function (innerResolve) {
+                    system_1.System.getCameraDevices()
+                        .then(function (cameraDevices) {
+                        var camGiven = cameraDevices.filter(function (cam) {
+                            return cam.getId().toUpperCase() === camDevice.toUpperCase();
+                        });
+                        if (camGiven) {
+                            innerResolve(camGiven[0].getName());
+                        }
+                        else {
+                            innerResolve('');
+                        }
+                    });
+                });
+            }
+            else {
+                reject(TypeError('Parameter should either be a CameraDevice or string.'));
+            }
+            _getName.then(function (name) {
+                camName = name;
+                if (_this._isItemCall) {
+                    logger_1.Logger.warn('sourceWarning', 'setValue', true);
+                    return item_1.Item.set('prop:item', camDevice, _this._id);
+                }
+                else {
+                    return item_1.Item.wrapSet('prop:srcitem', camDevice, _this._srcId, _this._id, _this._updateId.bind(_this));
+                }
+            }).then(function () {
+                return item_1.Item.set('prop:name', camName, _this._id);
+            })
+                .then(function () {
+                resolve(_this);
+            });
+        });
+    };
     return SourceCamera;
 })();
 exports.SourceCamera = SourceCamera;
-},{"../../internal/item":54,"../../internal/util/logger":57,"../../system/system":67}],33:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/logger":69,"../../system/camera":75,"../../system/system":82,"../../util/rectangle":91}],39:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var global_1 = require('../../internal/global');
@@ -7301,7 +8835,7 @@ var SourceConfigurable = (function () {
                 _this._checkPromise = item_1.Item.get('prop:BrowserConfiguration', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:BrowserConfiguration', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:BrowserConfiguration', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (config) {
                 var configObj = config === 'null' ? {} : JSON.parse(config);
@@ -7403,7 +8937,7 @@ var SourceConfigurable = (function () {
     return SourceConfigurable;
 })();
 exports.SourceConfigurable = SourceConfigurable;
-},{"../../internal/global":51,"../../internal/internal":53,"../../internal/item":54,"../../internal/util/logger":57,"../environment":4}],34:[function(require,module,exports){
+},{"../../internal/global":63,"../../internal/internal":65,"../../internal/item":66,"../../internal/util/logger":69,"../environment":4}],40:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var rectangle_1 = require('../../util/rectangle');
@@ -7488,10 +9022,61 @@ var SourceFlash = (function () {
             }
         });
     };
+    SourceFlash.prototype.isSourceAvailable = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'isSourceAvailable', true);
+                item_1.Item.get('prop:itemavail', _this._id).then(function (val) {
+                    resolve(val === '1');
+                });
+            }
+            else {
+                item_1.Item.wrapGet('prop:itemavail', _this._srcId, _this._id, _this._updateId.bind(_this)).then(function (val) {
+                    resolve(val === '1');
+                });
+            }
+        });
+    };
+    SourceFlash.prototype.getValue = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'getValue', true);
+                _this._checkPromise = item_1.Item.get('prop:srcitem', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function (filename) {
+                resolve(filename);
+            });
+        });
+    };
+    ;
+    SourceFlash.prototype.setValue = function (filename) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'setValue', true);
+                _this._checkPromise = item_1.Item.set('prop:item', filename, _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapSet('prop:srcitem', filename, _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise
+                .then(function () {
+                return item_1.Item.set('prop:name', filename, _this._id);
+            })
+                .then(function () {
+                resolve(_this);
+            });
+        });
+    };
     return SourceFlash;
 })();
 exports.SourceFlash = SourceFlash;
-},{"../../internal/item":54,"../../internal/util/logger":57,"../../util/rectangle":74}],35:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/logger":69,"../../util/rectangle":91}],41:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var environment_1 = require('../environment');
@@ -7499,6 +9084,8 @@ var xml_1 = require('../../internal/util/xml');
 var json_1 = require('../../internal/util/json');
 var isource_1 = require('./isource');
 var logger_1 = require('../../internal/util/logger');
+var MIN_FPS = 24;
+var MAX_FPS = 300;
 var iSourceGame = (function () {
     function iSourceGame() {
     }
@@ -7592,12 +9179,15 @@ var iSourceGame = (function () {
             else {
                 var regExp = new RegExp('^(([A-Z|a-z]:\\\\[^*|"<>?\n]*)|(\\\\\\\\.*?' +
                     '\\\\.*)|([A-Za-z]+\\\\[^*|"<>?\\n]*))\.(png|gif|jpg|jpeg|tif)$');
-                if (regExp.test(path) || path === '') {
+                if (regExp.test(path.toLowerCase()) || path === '') {
                     var valueObj = json_1.JSON.parse(_this._value.toString());
                     valueObj['replace'] = path;
                     _this.setValue(xml_1.XML.parseJSON(valueObj)).then(function () {
                         resolve(_this);
                     });
+                }
+                else {
+                    reject(Error('Invalid file path or type is provided.'));
                 }
             }
         });
@@ -7612,17 +9202,94 @@ var iSourceGame = (function () {
                 reject(Error('Current item should be a game item'));
             }
             else {
-                _this.getValue().then(function () {
+                _this.getValue().then(function (value) {
                     var valueObj = json_1.JSON.parse(_this._value.toString());
                     resolve(valueObj['replace'] ? valueObj['replace'] : '');
                 });
             }
         });
     };
+    iSourceGame.prototype.isTransparent = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'isTransparent', true);
+                _this._checkPromise = item_1.Item.get('prop:GameCapAlpha', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:GameCapAlpha', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function (res) {
+                resolve(res === '1');
+            });
+        });
+    };
+    iSourceGame.prototype.setTransparent = function (value) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'setTransparent', true);
+                _this._checkPromise = item_1.Item.set('prop:GameCapAlpha', (value ? '1' : '0'), _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapSet('prop:GameCapAlpha', (value ? '1' : '0'), _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function () {
+                resolve(_this);
+            });
+        });
+    };
+    iSourceGame.prototype.getGameFPSCap = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'getGameFPSCap', true);
+                _this._checkPromise = item_1.Item.get('prop:GameCapFrameTimeLimit', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:GameCapFrameTimeLimit', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function (res) {
+                if (res === '0' || res === '' || res === 0) {
+                    resolve(0);
+                }
+                else {
+                    var fps = Math.floor(10000000 / Number(res));
+                    fps = Math.min(Math.max(fps, MIN_FPS), MAX_FPS);
+                    resolve(fps);
+                }
+            });
+        });
+    };
+    iSourceGame.prototype.setGameFPSCap = function (value) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (typeof value !== 'number') {
+                reject(TypeError('Use an integer as the parameter.'));
+            }
+            else if (value !== 0 && (Number(value) < MIN_FPS || Number(value) > MAX_FPS)) {
+                reject(RangeError("Game FPS cap may only be 0 or in the range of " + MIN_FPS + " to " + MAX_FPS + "."));
+            }
+            else {
+                var frametime = (value > 0) ? Math.floor(10000000 / Number(value)) : 0;
+                if (_this._isItemCall) {
+                    logger_1.Logger.warn('sourceWarning', 'setGameFPSCap', true);
+                    item_1.Item.set('prop:GameCapFrameTimeLimit', String(frametime), _this._id).then(function () {
+                        resolve(_this);
+                    });
+                }
+                else {
+                    item_1.Item.wrapSet('prop:GameCapFrameTimeLimit', String(frametime), _this._srcId, _this._id, _this._updateId.bind(_this)).then(function () {
+                        resolve(_this);
+                    });
+                }
+            }
+        });
+    };
     return iSourceGame;
 })();
 exports.iSourceGame = iSourceGame;
-},{"../../internal/item":54,"../../internal/util/json":56,"../../internal/util/logger":57,"../../internal/util/xml":60,"../environment":4,"./isource":41}],36:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/json":68,"../../internal/util/logger":69,"../../internal/util/xml":73,"../environment":4,"./isource":50}],42:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var internal_1 = require('../../internal/internal');
 var item_1 = require('../../internal/item');
@@ -7645,7 +9312,7 @@ var iSourceHtml = (function () {
     /**
      * param: (func: string, arg: string)
      * ```
-     * return: Promise<HtmlSource>
+     * return: Promise<ISourceHtml>
      * ```
      *
      * Allow this item to call a pre-exposed function within the HTML Item
@@ -7694,7 +9361,7 @@ var iSourceHtml = (function () {
     /**
      * param: (url: string)
      * ```
-     * return: Promise<HtmlSource>
+     * return: Promise<ISourceHtml>
      * ```
      *
      * Sets the URL of this webpage item.
@@ -7714,7 +9381,14 @@ var iSourceHtml = (function () {
             _this._checkPromise.then(function (url) {
                 var _url = String(url).split('*');
                 _url[0] = value;
-                return item_1.Item.set('prop:srcitem', _url.join('*'), _this._id);
+                return item_1.Item.set(_this._isItemCall ? 'prop:item' : 'prop:srcitem', _url.join('*'), _this._id);
+            }).then(function (code) {
+                if (code) {
+                    return item_1.Item.set('prop:name', value, _this._id);
+                }
+                else {
+                    return Promise.resolve(code);
+                }
             }).then(function (code) {
                 if (code) {
                     resolve(_this);
@@ -8255,17 +9929,160 @@ var iSourceHtml = (function () {
             });
         });
     };
+    iSourceHtml.prototype.isReloadOnShowEnabled = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'isReloadOnShowEnabled', true);
+                _this._checkPromise = item_1.Item.get('prop:RefreshOnSrcShow', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:RefreshOnSrcShow', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function (val) {
+                resolve(val === '1');
+            });
+        });
+    };
+    iSourceHtml.prototype.enableReloadOnShow = function (value) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'enableReloadOnShow', true);
+                _this._checkPromise = item_1.Item.set('prop:RefreshOnSrcShow', (value ? '1' : '0'), _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapSet('prop:RefreshOnSrcShow', (value ? '1' : '0'), _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function () {
+                resolve(_this);
+            });
+        });
+    };
+    iSourceHtml.prototype.isReloadOnSceneEnterEnabled = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'isReloadOnShowEnabled', true);
+                _this._checkPromise = item_1.Item.get('prop:RefreshOnScnLoad', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:RefreshOnScnLoad', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function (val) {
+                resolve(val === '1');
+            });
+        });
+    };
+    iSourceHtml.prototype.enableReloadOnSceneEnter = function (value) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'enableReloadOnShow', true);
+                _this._checkPromise = item_1.Item.set('prop:RefreshOnScnLoad', (value ? '1' : '0'), _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapSet('prop:RefreshOnScnLoad', (value ? '1' : '0'), _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function () {
+                resolve(_this);
+            });
+        });
+    };
+    iSourceHtml.prototype.isSourceAvailable = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'isSourceAvailable', true);
+                item_1.Item.get('prop:itemavail', _this._id).then(function (val) {
+                    resolve(val === '1');
+                });
+            }
+            else {
+                item_1.Item.wrapGet('prop:itemavail', _this._srcId, _this._id, _this._updateId.bind(_this)).then(function (val) {
+                    resolve(val === '1');
+                });
+            }
+        });
+    };
     return iSourceHtml;
 })();
 exports.iSourceHtml = iSourceHtml;
-},{"../../internal/internal":53,"../../internal/item":54,"../../internal/util/logger":57,"../../util/rectangle":74,"../environment":4}],37:[function(require,module,exports){
+},{"../../internal/internal":65,"../../internal/item":66,"../../internal/util/logger":69,"../../util/rectangle":91,"../environment":4}],43:[function(require,module,exports){
+/// <reference path="../../../defs/es6-promise.d.ts" />
+var item_1 = require('../../internal/item');
+var logger_1 = require('../../internal/util/logger');
+var SourceImage = (function () {
+    function SourceImage() {
+    }
+    SourceImage.prototype._updateId = function (id, sceneId) {
+        this._id = id;
+        this._sceneId = sceneId;
+    };
+    SourceImage.prototype.isSourceAvailable = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'isSourceAvailable', true);
+                item_1.Item.get('prop:itemavail', _this._id).then(function (val) {
+                    resolve(val === '1');
+                });
+            }
+            else {
+                item_1.Item.wrapGet('prop:itemavail', _this._srcId, _this._id, _this._updateId.bind(_this)).then(function (val) {
+                    resolve(val === '1');
+                });
+            }
+        });
+    };
+    SourceImage.prototype.getValue = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'getValue', true);
+                _this._checkPromise = item_1.Item.get('prop:srcitem', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function (filename) {
+                resolve(filename);
+            });
+        });
+    };
+    ;
+    SourceImage.prototype.setValue = function (filename) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'setValue', true);
+                _this._checkPromise = item_1.Item.set('prop:item', filename, _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapSet('prop:srcitem', filename, _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise
+                .then(function () {
+                return item_1.Item.set('prop:name', filename, _this._id);
+            })
+                .then(function () {
+                resolve(_this);
+            });
+        });
+    };
+    return SourceImage;
+})();
+exports.SourceImage = SourceImage;
+},{"../../internal/item":66,"../../internal/util/logger":69}],44:[function(require,module,exports){
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
     function __() { this.constructor = d; }
     __.prototype = b.prototype;
     d.prototype = new __();
 };
+var mixin_1 = require('../../internal/util/mixin');
 var source_1 = require('../source/source');
+var iimage_1 = require('./iimage');
 /**
  * The ImageSource class represents the sources of the image items that
  * has been added to the stage. A single source could have multiple items linked
@@ -8304,7 +10121,8 @@ var ImageSource = (function (_super) {
     return ImageSource;
 })(source_1.Source);
 exports.ImageSource = ImageSource;
-},{"../source/source":45}],38:[function(require,module,exports){
+mixin_1.applyMixins(ImageSource, [iimage_1.SourceImage]);
+},{"../../internal/util/mixin":70,"../source/source":56,"./iimage":43}],45:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var json_1 = require('../../internal/util/json');
@@ -8358,10 +10176,26 @@ var SourceMedia = (function () {
             });
         });
     };
+    SourceMedia.prototype.isSourceAvailable = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'isSourceAvailable', true);
+                item_1.Item.get('prop:itemavail', _this._id).then(function (val) {
+                    resolve(val === '1');
+                });
+            }
+            else {
+                item_1.Item.wrapGet('prop:itemavail', _this._srcId, _this._id, _this._updateId.bind(_this)).then(function (val) {
+                    resolve(val === '1');
+                });
+            }
+        });
+    };
     return SourceMedia;
 })();
 exports.SourceMedia = SourceMedia;
-},{"../../internal/item":54,"../../internal/util/json":56,"../../internal/util/logger":57}],39:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/json":68,"../../internal/util/logger":69}],46:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var cuepoint_1 = require('./cuepoint');
@@ -8377,8 +10211,8 @@ var logger_1 = require('../../internal/util/logger');
     ActionAfterPlayback[ActionAfterPlayback["HIDE"] = 4] = "HIDE";
 })(exports.ActionAfterPlayback || (exports.ActionAfterPlayback = {}));
 var ActionAfterPlayback = exports.ActionAfterPlayback;
-var AUDIO_REGEX = /\.(mp3|aac|cda|ogg|m4a|flac|wma|aiff|aif|wav|mid|midi|rma)$/;
-var VIDEO_REGEX = /\.(avi|flv|mkv|mp4|mpg|wmv|3gp|3g2|asf|f4v|mov|mpeg|vob|webm)$/;
+exports.AUDIO_REGEX = /\.(mp3|aac|cda|ogg|m4a|flac|wma|aiff|aif|wav|mid|midi|rma)$/i;
+exports.VIDEO_REGEX = /\.(avi|flv|mkv|mp4|mpg|wmv|3gp|3g2|asf|f4v|mov|mpeg|vob|webm)$/i;
 var SourcePlayback = (function () {
     function SourcePlayback() {
     }
@@ -8394,7 +10228,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('sync:syncable', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('sync:syncable', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('sync:syncable', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(val === '1' ? true : false);
@@ -8409,7 +10243,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('sync:position', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('sync:position', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('sync:position', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(Number(val) / 10000000);
@@ -8439,7 +10273,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('sync:duration', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('sync:duration', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('sync:duration', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(Number(val) / 10000000);
@@ -8454,7 +10288,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('sync:state', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('sync:state', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('sync:state', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(val === "running");
@@ -8484,7 +10318,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:InPoint', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:InPoint', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:InPoint', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(Number(val) / 10000000);
@@ -8514,7 +10348,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:OutPoint', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:OutPoint', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:OutPoint', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(Number(val) / 10000000);
@@ -8544,7 +10378,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:OpWhenFinished', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:OpWhenFinished', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:OpWhenFinished', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(Number(val));
@@ -8574,7 +10408,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:StartOnLoad', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:StartOnLoad', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:StartOnLoad', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(val === '1');
@@ -8604,7 +10438,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:fdeinterlace', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:fdeinterlace', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:fdeinterlace', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(val === '3');
@@ -8634,7 +10468,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:RememberPosition', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:RememberPosition', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:RememberPosition', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(val === '1');
@@ -8664,7 +10498,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:ShowPosition', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:ShowPosition', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:ShowPosition', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 resolve(val === '1');
@@ -8676,10 +10510,10 @@ var SourcePlayback = (function () {
         return new Promise(function (resolve) {
             if (_this._isItemCall) {
                 logger_1.Logger.warn('sourceWarning', 'setShowingPlaybackPosition', true);
-                _this._checkPromise = item_1.Item.set('prop:ShowPositio', (value ? '1' : '0'), _this._id);
+                _this._checkPromise = item_1.Item.set('prop:ShowPosition', (value ? '1' : '0'), _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapSet('prop:ShowPositio', (value ? '1' : '0'), _this._srcId, _this._id, _this._updateId.bind(_this));
+                _this._checkPromise = item_1.Item.wrapSet('prop:ShowPosition', (value ? '1' : '0'), _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function () {
                 resolve(_this);
@@ -8694,7 +10528,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:CuePoints', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:CuePoints', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:CuePoints', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (cuePointString) {
                 if (cuePointString === '') {
@@ -8732,10 +10566,10 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:srcitem', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (filename) {
-                resolve(AUDIO_REGEX.test(filename));
+                resolve(exports.AUDIO_REGEX.test(filename));
             });
         });
     };
@@ -8747,10 +10581,10 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:srcitem', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (filename) {
-                resolve(VIDEO_REGEX.test(filename));
+                resolve(exports.VIDEO_REGEX.test(filename));
             });
         });
     };
@@ -8763,7 +10597,7 @@ var SourcePlayback = (function () {
                 _this._checkPromise = item_1.Item.get('prop:srcitem', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (filename) {
                 resolve(filename);
@@ -8774,7 +10608,8 @@ var SourcePlayback = (function () {
     SourcePlayback.prototype.setValue = function (filename) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            if (VIDEO_REGEX.test(filename) || AUDIO_REGEX.test(filename)) {
+            filename = filename.split('*')[0];
+            if (exports.VIDEO_REGEX.test(filename) || exports.AUDIO_REGEX.test(filename)) {
                 if (_this._isItemCall) {
                     logger_1.Logger.warn('sourceWarning', 'setValue', true);
                     _this._checkPromise = item_1.Item.set('prop:srcitem', filename, _this._id);
@@ -8783,6 +10618,18 @@ var SourcePlayback = (function () {
                     _this._checkPromise = item_1.Item.wrapSet('prop:srcitem', filename, _this._srcId, _this._id, _this._updateId.bind(_this));
                 }
                 _this._checkPromise
+                    .then(function () {
+                    return item_1.Item.get('prop:FilePlaylist', _this._id);
+                }).then(function (playlist) {
+                    if (playlist && playlist !== 'PLAYLIST' && (playlist.split('|').length < 2)) {
+                        var playlistArray = playlist.split('*');
+                        playlistArray[0] = filename;
+                        return item_1.Item.set('prop:FilePlaylist', playlistArray.join('*'), _this._id);
+                    }
+                    else {
+                        return Promise.resolve(true);
+                    }
+                })
                     .then(function () { return item_1.Item.set('prop:name', filename, _this._id); })
                     .then(function () { return item_1.Item.set('prop:CuePoints', '', _this._id); })
                     .then(function () {
@@ -8797,7 +10644,321 @@ var SourcePlayback = (function () {
     return SourcePlayback;
 })();
 exports.SourcePlayback = SourcePlayback;
-},{"../../internal/item":54,"../../internal/util/logger":57,"./cuepoint":26}],40:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/logger":69,"./cuepoint":32}],47:[function(require,module,exports){
+/// <reference path="../../../defs/es6-promise.d.ts" />
+var item_1 = require('../../internal/item');
+var logger_1 = require('../../internal/util/logger');
+var BUFFER_MAX = 120;
+var SourceReplay = (function () {
+    function SourceReplay() {
+    }
+    SourceReplay.prototype._updateId = function (id, sceneId) {
+        this._id = id;
+        this._sceneId = sceneId;
+    };
+    SourceReplay.prototype.getChannel = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'getChannelName', true);
+                _this._checkPromise = item_1.Item.get('prop:presproperty:channelName', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:presproperty:channelName', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise
+                .then(function (channel) {
+                resolve(channel);
+            }).catch(function (err) { return reject(err); });
+        });
+    };
+    SourceReplay.prototype.setChannel = function (channel) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (typeof channel === 'string') {
+                if (_this._isItemCall) {
+                    logger_1.Logger.warn('sourceWarning', 'setChannelName', true);
+                    item_1.Item.set('prop:presproperty:channelName', channel, _this._id)
+                        .then(function (val) {
+                        resolve(_this);
+                    });
+                }
+                else {
+                    item_1.Item.wrapSet('prop:presproperty:channelName', channel, _this._srcId, _this._id, _this._updateId.bind(_this))
+                        .then(function (val) {
+                        resolve(_this);
+                    });
+                }
+            }
+            else {
+                reject(Error('Invalid parameter. setChannelName method only accepts channel name as a string.'));
+            }
+        });
+    };
+    SourceReplay.prototype.getHotkey = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'getHotkey', true);
+                _this._checkPromise = item_1.Item.get('prop:presproperty:hotkey', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:presproperty:hotkey', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise
+                .then(function (hotkey) {
+                resolve(Number(hotkey));
+            }).catch(function (err) { return reject(err); });
+        });
+    };
+    SourceReplay.prototype.setHotkey = function (hotkey) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (typeof hotkey === 'number') {
+                if (_this._isItemCall) {
+                    logger_1.Logger.warn('sourceWarning', 'setHotkey', true);
+                    item_1.Item.set('prop:presproperty:hotkey', String(hotkey), _this._id)
+                        .then(function (val) {
+                        resolve(_this);
+                    });
+                }
+                else {
+                    item_1.Item.wrapSet('prop:presproperty:hotkey', String(hotkey), _this._srcId, _this._id, _this._updateId.bind(_this))
+                        .then(function (val) {
+                        resolve(_this);
+                    });
+                }
+            }
+            else {
+                reject(Error('Invalid parameter. setHotkey method only accepts hotkey as a number.'));
+            }
+        });
+    };
+    SourceReplay.prototype.getReplayTime = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'getReplayTime', true);
+                _this._checkPromise = item_1.Item.get('prop:presproperty:buffer', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:presproperty:buffer', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise
+                .then(function (buffer) {
+                resolve(Number(buffer));
+            }).catch(function (err) { return reject(err); });
+        });
+    };
+    SourceReplay.prototype.setReplayTime = function (buffer) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (typeof buffer === 'number') {
+                if (buffer > 120 || buffer < 0) {
+                    reject(Error("Invalid parameter. setReplaytime method only accepts numbers up to " + BUFFER_MAX + "."));
+                }
+                else if (_this._isItemCall) {
+                    logger_1.Logger.warn('sourceWarning', 'setReplayTime', true);
+                    item_1.Item.set('prop:presproperty:buffer', String(buffer), _this._id)
+                        .then(function (val) {
+                        resolve(_this);
+                    });
+                }
+                else {
+                    item_1.Item.wrapSet('prop:presproperty:buffer', String(buffer), _this._srcId, _this._id, _this._updateId.bind(_this))
+                        .then(function (val) {
+                        resolve(_this);
+                    });
+                }
+            }
+            else {
+                reject(Error('Invalid parameter. setReplaytime method only accepts buffer as a number.'));
+            }
+        });
+    };
+    SourceReplay.prototype.startReplay = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'startReplay', true);
+                item_1.Item.set('prop:ReplayActive', '1', _this._id)
+                    .then(function (val) {
+                    resolve(_this);
+                });
+            }
+            else {
+                item_1.Item.wrapSet('prop:ReplayActive', '1', _this._srcId, _this._id, _this._updateId.bind(_this))
+                    .then(function (val) {
+                    resolve(_this);
+                });
+            }
+        });
+    };
+    SourceReplay.prototype.stopReplay = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'stopReplay', true);
+                item_1.Item.set('prop:ReplayActive', '0', _this._id)
+                    .then(function (val) {
+                    resolve(_this);
+                });
+            }
+            else {
+                item_1.Item.wrapSet('prop:ReplayActive', '0', _this._srcId, _this._id, _this._updateId.bind(_this))
+                    .then(function (val) {
+                    resolve(_this);
+                });
+            }
+        });
+    };
+    SourceReplay.prototype.getReplayState = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'getReplayState', true);
+                _this._checkPromise = item_1.Item.get('prop:ReplayActive', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:ReplayActive', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise
+                .then(function (activeState) { return resolve(Number(activeState)); })
+                .catch(function (err) { return reject(err); });
+        });
+    };
+    SourceReplay.prototype.isAutostartOnSceneLoad = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'isAutostartOnSceneLoad', true);
+                _this._checkPromise = item_1.Item.get('prop:StartOnLoad', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:StartOnLoad', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function (val) {
+                resolve(val === '1');
+            });
+        });
+    };
+    SourceReplay.prototype.setAutostartOnSceneLoad = function (value) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'setAutostartOnSceneLoad', true);
+                _this._checkPromise = item_1.Item.set('prop:StartOnLoad', (value ? '1' : '0'), _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapSet('prop:StartOnLoad', (value ? '1' : '0'), _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise.then(function () {
+                resolve(_this);
+            });
+        });
+    };
+    return SourceReplay;
+})();
+exports.SourceReplay = SourceReplay;
+},{"../../internal/item":66,"../../internal/util/logger":69}],48:[function(require,module,exports){
+var item_1 = require('../../internal/item');
+var scene_1 = require('../scene');
+var isource_1 = require('../source/isource');
+var logger_1 = require('../../internal/util/logger');
+var SourceScene = (function () {
+    function SourceScene() {
+    }
+    SourceScene.prototype._updateId = function (id, sceneId) {
+        this._id = id;
+        this._sceneId = sceneId;
+    };
+    SourceScene.prototype._setScene = function (itemType, uid, name, resolve, reject) {
+        var _this = this;
+        if (this._isItemCall) {
+            logger_1.Logger.warn('sourceWarning', 'setScene', true);
+            this._checkPromise = item_1.Item.set('prop:srctype', itemType + "," + uid, this._id);
+        }
+        else {
+            //wrapset
+            this._checkPromise = item_1.Item.wrapSet('prop:srctype', itemType + "," + uid, this._srcId, this._id, this._updateId.bind(this));
+        }
+        var code;
+        this._checkPromise
+            .then(function (result) {
+            code = result;
+            return item_1.Item.set('prop:name', "Scene: " + name);
+        }).then(function () {
+            if (code) {
+                resolve(_this);
+            }
+            else {
+                reject(Error('Invalid value'));
+            }
+        }).catch(function (err) { return reject(err); });
+    };
+    SourceScene.prototype.getScene = function () {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'getScene', true);
+                _this._checkPromise = item_1.Item.get('prop:srcitem', _this._id);
+            }
+            else {
+                _this._checkPromise = item_1.Item.wrapGet('prop:srcitem', _this._srcId, _this._id, _this._updateId.bind(_this));
+            }
+            _this._checkPromise
+                .then(function (scene) {
+                if (scene === '0') {
+                    resolve(scene_1.Scene.liveScene());
+                }
+                else {
+                    return scene_1.Scene.getBySceneUid(scene);
+                }
+            }).then(function (sceneObj) { return resolve(sceneObj); })
+                .catch(function (err) { return reject(err); });
+        });
+    };
+    SourceScene.prototype.setScene = function (scene) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (scene instanceof scene_1.Scene ||
+                (typeof scene === 'number' && scene >= 0 && Number['isInteger'](Number(scene)))) {
+                var itemType = '11';
+                if (scene instanceof scene_1.Scene) {
+                    var sceneUID = scene['_uid'];
+                    var name = scene['_name'];
+                    itemType = (sceneUID === "0") ? String(isource_1.ItemTypes.VIEW) : String(isource_1.ItemTypes.SCENE);
+                    _this._setScene(itemType, sceneUID, name, resolve, reject);
+                }
+                else if (typeof scene === 'number') {
+                    var name = '';
+                    var targetScene;
+                    scene_1.Scene.getBySceneIndex(scene)
+                        .then(function (sceneByID) {
+                        targetScene = sceneByID;
+                        return targetScene.getName();
+                    }).then(function (sceneName) {
+                        name = sceneName;
+                        return targetScene.getSceneUid();
+                    }).then(function (uid) {
+                        _this._setScene(itemType, uid, name, resolve, reject);
+                    }).catch(function (err) { return reject(err); });
+                }
+            }
+            else {
+                if (typeof scene === 'number' && (scene < 1 || !Number['isInteger'](Number(scene)))) {
+                    reject(Error('Invalid parameters. Valid range is greater than 0.'));
+                }
+                else {
+                    reject(Error('Invalid parameters. Valid range is greater than 0 or a Scene object.'));
+                }
+            }
+        });
+    };
+    return SourceScene;
+})();
+exports.SourceScene = SourceScene;
+},{"../../internal/item":66,"../../internal/util/logger":69,"../scene":29,"../source/isource":50}],49:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var xml_1 = require('../../internal/util/xml');
@@ -9086,7 +11247,7 @@ var iSourceScreen = (function () {
     return iSourceScreen;
 })();
 exports.iSourceScreen = iSourceScreen;
-},{"../../internal/item":54,"../../internal/util/json":56,"../../internal/util/logger":57,"../../internal/util/xml":60,"../../util/rectangle":74}],41:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/json":68,"../../internal/util/logger":69,"../../internal/util/xml":73,"../../util/rectangle":91}],50:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var version_1 = require('../../internal/util/version');
@@ -9109,6 +11270,12 @@ var logger_1 = require('../../internal/util/logger');
     ItemTypes[ItemTypes["FLASHFILE"] = 6] = "FLASHFILE";
     ItemTypes[ItemTypes["GAMESOURCE"] = 7] = "GAMESOURCE";
     ItemTypes[ItemTypes["HTML"] = 8] = "HTML";
+    ItemTypes[ItemTypes["THREEDS"] = 9] = "THREEDS";
+    ItemTypes[ItemTypes["PPTFILE"] = 10] = "PPTFILE";
+    ItemTypes[ItemTypes["SCENE"] = 11] = "SCENE";
+    ItemTypes[ItemTypes["GROUP"] = 12] = "GROUP";
+    ItemTypes[ItemTypes["REPLAY"] = 13] = "REPLAY";
+    ItemTypes[ItemTypes["VIEW"] = 14] = "VIEW";
 })(exports.ItemTypes || (exports.ItemTypes = {}));
 var ItemTypes = exports.ItemTypes;
 /**
@@ -9136,26 +11303,17 @@ var iSource = (function () {
             else {
                 if (_this._isItemCall) {
                     logger_1.Logger.warn('sourceWarning', 'setName', true);
-                    _this._checkPromise = item_1.Item.get('itemlist', _this._id);
-                }
-                else {
-                    _this._checkPromise = item_1.Item.wrapGet('itemlist', _this._srcId, _this._id, _this._updateId.bind(_this));
-                }
-                _this._checkPromise.then(function (itemlist) {
-                    var promiseArray = [];
-                    var itemsArray = itemlist.split(',');
-                    itemsArray.forEach(function (itemId) {
-                        promiseArray.push(new Promise(function (itemResolve) {
-                            item_1.Item.set('prop:name', _this._name, itemId).then(function () {
-                                itemResolve(true);
-                            });
-                            item_1.Item.wrapSet('prop:name', _this._name, _this._srcId, itemId, _this._updateId.bind(_this));
-                        }));
-                    });
-                    Promise.all(promiseArray).then(function () {
+                    item_1.Item.set('prop:name', _this._name, _this._id)
+                        .then(function () {
                         resolve(_this);
                     });
-                });
+                }
+                else {
+                    item_1.Item.wrapSet('prop:name', _this._name, _this._srcId, _this._id, _this._updateId.bind(_this))
+                        .then(function () {
+                        resolve(_this);
+                    });
+                }
             }
         });
     };
@@ -9167,7 +11325,7 @@ var iSource = (function () {
                 _this._checkPromise = item_1.Item.get('prop:name', _this._id);
             }
             else {
-                _this._checkPromise = item_1.Item.wrapGet('prop:name', _this._srcId, _this._id, _this._updateId.bind(_this).bind(_this));
+                _this._checkPromise = item_1.Item.wrapGet('prop:name', _this._srcId, _this._id, _this._updateId.bind(_this));
             }
             _this._checkPromise.then(function (val) {
                 _this._name = String(val);
@@ -9256,8 +11414,8 @@ var iSource = (function () {
             }
             var typeCheck = _this.getValue().then(function (origVal) {
                 return new Promise(function (typeRes, typeRej) {
-                    if (String(origVal).indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') !== -1 &&
-                        val.indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') === -1 &&
+                    if (String(origVal).toUpperCase().indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') !== -1 &&
+                        val.toUpperCase().indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') === -1 &&
                         _this._type === ItemTypes.LIVE) {
                         typeRej(Error('Value is not a valid Audio source'));
                     }
@@ -9269,7 +11427,7 @@ var iSource = (function () {
             typeCheck.then(function () {
                 if (_this._isItemCall) {
                     logger_1.Logger.warn('sourceWarning', 'setValue', true);
-                    item_1.Item.set(String(_this._type) === '2' ? 'prop:item' : 'prop:srcitem', val, _this._id)
+                    item_1.Item.set('prop:item', val, _this._id)
                         .then(function () {
                         resolve(_this);
                     });
@@ -9412,7 +11570,7 @@ var iSource = (function () {
     return iSource;
 })();
 exports.iSource = iSource;
-},{"../../internal/item":54,"../../internal/util/json":56,"../../internal/util/logger":57,"../../internal/util/version":59,"../../internal/util/xml":60,"../scene":23}],42:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/json":68,"../../internal/util/logger":69,"../../internal/util/version":72,"../../internal/util/xml":73,"../scene":29}],51:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var item_1 = require('../../internal/item');
 var io_1 = require('../../util/io');
@@ -9548,14 +11706,32 @@ var SourceVideoPlaylist = (function () {
                     .then(function (fileplaylist) {
                     resolve(_this);
                 });
+            }).catch(function (err) {
+                reject(err);
             });
         });
     };
     ;
+    SourceVideoPlaylist.prototype.isSourceAvailable = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this._isItemCall) {
+                logger_1.Logger.warn('sourceWarning', 'isSourceAvailable', true);
+                item_1.Item.get('prop:itemavail', _this._id).then(function (val) {
+                    resolve(val === '1');
+                });
+            }
+            else {
+                item_1.Item.wrapGet('prop:itemavail', _this._srcId, _this._id, _this._updateId.bind(_this)).then(function (val) {
+                    resolve(val === '1');
+                });
+            }
+        });
+    };
     return SourceVideoPlaylist;
 })();
 exports.SourceVideoPlaylist = SourceVideoPlaylist;
-},{"../../internal/item":54,"../../internal/util/logger":57,"../../util/io":72}],43:[function(require,module,exports){
+},{"../../internal/item":66,"../../internal/util/logger":69,"../../util/io":88}],52:[function(require,module,exports){
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
     function __() { this.constructor = d; }
@@ -9612,7 +11788,105 @@ var MediaSource = (function (_super) {
 })(source_1.Source);
 exports.MediaSource = MediaSource;
 mixin_1.applyMixins(MediaSource, [iplayback_1.SourcePlayback, iaudio_1.Audio, imedia_1.SourceMedia]);
-},{"../../internal/util/mixin":58,"./iaudio":30,"./imedia":38,"./iplayback":39,"./source":45}],44:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"./iaudio":36,"./imedia":45,"./iplayback":46,"./source":56}],53:[function(require,module,exports){
+/// <reference path="../../../defs/es6-promise.d.ts" />
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var mixin_1 = require('../../internal/util/mixin');
+var source_1 = require('../source/source');
+var iaudio_1 = require('../source/iaudio');
+var ireplay_1 = require('./ireplay');
+/**
+ * The ReplaySource class represents the sources of the replay items that
+ * has been added to the stage. A single source could have multiple items linked
+ * into it and any changes to the source would affect all items linked to it.
+ *
+ * Each item is represented by the ReplayItem class.
+ * See: {@link #core/ReplayItem Core/ReplayItem}
+ *
+ * Inherits from: {@link #core/Source Core/Source}
+ *
+ * ### Basic Usage
+ *
+ * ```javascript
+ * var xjs = require('xjs');
+ *
+ * xjs.Scene.getActiveScene().then(function(scene) {
+ *   scene.getSources().then(function(sources) {
+ *   for (var i in sources) {
+ *       if (sources[i] instanceof XJS.ReplaySource) {
+ *         // Manipulate your game source here
+ *         sources[i].setSilenceDetectionEnabled(true);
+ *       }
+ *     }
+ *   })
+ * })
+ * ```
+ *
+ * All methods marked as *Chainable* resolve with the original `ReplaySource`
+ * instance.
+ */
+var ReplaySource = (function (_super) {
+    __extends(ReplaySource, _super);
+    function ReplaySource() {
+        _super.apply(this, arguments);
+    }
+    return ReplaySource;
+})(source_1.Source);
+exports.ReplaySource = ReplaySource;
+mixin_1.applyMixins(ReplaySource, [iaudio_1.Audio, ireplay_1.SourceReplay]);
+},{"../../internal/util/mixin":70,"../source/iaudio":36,"../source/source":56,"./ireplay":47}],54:[function(require,module,exports){
+/// <reference path="../../../defs/es6-promise.d.ts" />
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var mixin_1 = require('../../internal/util/mixin');
+var source_1 = require('../source/source');
+var iscene_1 = require('../source/iscene');
+/**
+ * The SceneSource class represents the sources of the scene items that
+ * has been added to the stage. A single source could have multiple items linked
+ * into it and any changes to the source would affect all items linked to it.
+ *
+ * Each item is represented by the SceneItem class.
+ * See: {@link #core/SceneItem Core/SceneItem}
+ *
+ * Inherits from: {@link #core/Source Core/Source}
+ *
+ * ### Basic Usage
+ *
+ * ```javascript
+ * var xjs = require('xjs');
+ *
+ * xjs.Scene.getActiveScene().then(function(scene) {
+ *   scene.getSources().then(function(sources) {
+ *   for (var i in sources) {
+ *       if (sources[i] instanceof XJS.SceneSource) {
+ *         // Manipulate your scene source here
+ *         sources[i].setSilenceDetectionEnabled(true);
+ *       }
+ *     }
+ *   })
+ * })
+ * ```
+  */
+var SceneSource = (function (_super) {
+    __extends(SceneSource, _super);
+    function SceneSource() {
+        _super.apply(this, arguments);
+    }
+    return SceneSource;
+})(source_1.Source);
+exports.SceneSource = SceneSource;
+mixin_1.applyMixins(SceneSource, [iscene_1.SourceScene]);
+},{"../../internal/util/mixin":70,"../source/iscene":48,"../source/source":56}],55:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -9662,7 +11936,7 @@ var ScreenSource = (function (_super) {
 })(source_1.Source);
 exports.ScreenSource = ScreenSource;
 mixin_1.applyMixins(ScreenSource, [iscreen_1.iSourceScreen]);
-},{"../../internal/util/mixin":58,"../source/source":45,"./iscreen":40}],45:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"../source/source":56,"./iscreen":49}],56:[function(require,module,exports){
 /// <reference path="../../../defs/es6-promise.d.ts" />
 var mixin_1 = require('../../internal/util/mixin');
 var app_1 = require('../../internal/app');
@@ -9751,15 +12025,13 @@ var Source = (function () {
                 version_1.versionCompare(version_1.getVersion())
                     .is
                     .greaterThan(version_1.minVersion)) {
-                Source.getItemList().then(function (items) {
-                    if (items.length > 0) {
-                        items[0].getSource().then(function (source) {
-                            resolve(source);
-                        });
-                    }
-                    else {
-                        reject(Error('Cannot get item list'));
-                    }
+                item_1.Item.get('itemlist').then(function (itemlist) {
+                    var itemId = itemlist.split(',')[0];
+                    scene_1.Scene.searchItemsById(itemId).then(function (item) {
+                        return item.getSource();
+                    }).then(function (source) {
+                        resolve(source);
+                    }).catch(function () { return resolve(null); });
                 });
             }
             else if (environment_1.Environment.isSourcePlugin() || environment_1.Environment.isSourceProps()) {
@@ -9856,10 +12128,8 @@ var Source = (function () {
             var uniqueObj = {};
             var uniqueSrc = [];
             var promiseArray = [];
-            app_1.App.getAsList('presetconfig').then(function (jsonArr) {
-                for (var i = 0; i < jsonArr.length - 1; i++) {
-                    allJson = allJson.concat(jsonArr[i].children);
-                }
+            app_1.App.getAsItemList('sceneconfig').then(function (jsonArr) {
+                allJson = jsonArr;
                 var sourcePromise = function (srcid) { return new Promise(function (sourceResolve) {
                     scene_1.Scene.searchSourcesById(srcid).then(function (result) {
                         allSrc = allSrc.concat(result);
@@ -9899,7 +12169,7 @@ var Source = (function () {
 })();
 exports.Source = Source;
 mixin_1.applyMixins(Source, [isource_1.iSource]);
-},{"../../internal/app":49,"../../internal/item":54,"../../internal/util/mixin":58,"../../internal/util/version":59,"../environment":4,"../scene":23,"../source/isource":41}],46:[function(require,module,exports){
+},{"../../internal/app":61,"../../internal/item":66,"../../internal/util/mixin":70,"../../internal/util/version":72,"../environment":4,"../scene":29,"../source/isource":50}],57:[function(require,module,exports){
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
     function __() { this.constructor = d; }
@@ -9953,7 +12223,7 @@ var VideoPlaylistSource = (function (_super) {
 })(source_1.Source);
 exports.VideoPlaylistSource = VideoPlaylistSource;
 mixin_1.applyMixins(VideoPlaylistSource, [iconfig_1.SourceConfigurable, ivideoplaylist_1.SourceVideoPlaylist, iplayback_1.SourcePlayback, iaudio_1.Audio]);
-},{"../../internal/util/mixin":58,"./iaudio":30,"./iconfig":33,"./iplayback":39,"./ivideoplaylist":42,"./source":45}],47:[function(require,module,exports){
+},{"../../internal/util/mixin":70,"./iaudio":36,"./iconfig":39,"./iplayback":46,"./ivideoplaylist":51,"./source":56}],58:[function(require,module,exports){
 var app_1 = require('../internal/app');
 /**
  * The StreamInfo class provides methods to monitor the current active streams
@@ -10030,7 +12300,12 @@ var StreamInfo = (function () {
     StreamInfo.prototype.getName = function () {
         var _this = this;
         return new Promise(function (resolve) {
-            resolve(_this._name);
+            resolve(_this._name
+                .replace(/&apos;/g, "'")
+                .replace(/&quot;/g, '"')
+                .replace(/&gt;/g, '>')
+                .replace(/&lt;/g, '<')
+                .replace(/&amp;/g, '&'));
         });
     };
     /**
@@ -10121,7 +12396,75 @@ var StreamInfo = (function () {
     return StreamInfo;
 })();
 exports.StreamInfo = StreamInfo;
-},{"../internal/app":49}],48:[function(require,module,exports){
+},{"../internal/app":61}],59:[function(require,module,exports){
+/// <reference path="../../defs/es6-promise.d.ts" />
+var scene_1 = require('./scene');
+var app_1 = require('../internal/app');
+var Thumbnail = (function () {
+    function Thumbnail() {
+    }
+    /**
+     * param?: scene<id|Scene|undefined>
+     * ```
+     * return: Promise<string>
+     * ```
+     *
+     * Returns a base64 png url of a specified or current scene.
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * var sceneThumbnail
+     *
+     * Thumbnail.getSceneThumbnail().then(function(image) {
+     *   sceneThumbnail = image;
+     *   // can be used as:
+     *   // div.style.backgroundImage = 'url(data:image/png;base64, image)'
+     * })
+     */
+    Thumbnail.getSceneThumbnail = function (scene) {
+        var scenePromise;
+        return new Promise(function (resolve, reject) {
+            scenePromise = new Promise(function (innerResolve) {
+                if (scene instanceof scene_1.Scene) {
+                    scene.getSceneUid()
+                        .then(function (sceneUid) { return innerResolve(sceneUid); });
+                }
+                else if (typeof scene === 'number') {
+                    if (scene < 0) {
+                        reject(Error('Invalid parameters. Valid range is 0 or higher'));
+                    }
+                    else {
+                        scene_1.Scene.getBySceneIndex(scene).then(function (curScene) {
+                            return curScene.getSceneUid();
+                        }).then(function (sceneUid) {
+                            innerResolve(sceneUid);
+                        });
+                    }
+                }
+                else if (!scene) {
+                    scene_1.Scene.getActiveScene().then(function (curScene) {
+                        return curScene.getSceneUid(); //replace with getSceneIndex
+                    }).then(function (sceneUid) {
+                        innerResolve(sceneUid);
+                    });
+                }
+                else {
+                    reject(Error('Invalid parameters. Valid parameter is scene or scene index'));
+                }
+            });
+            scenePromise.then(function (sceneUid) {
+                app_1.App.get("scenethumbnail:" + sceneUid)
+                    .then(function (thumb) {
+                    resolve(thumb);
+                });
+            });
+        });
+    };
+    return Thumbnail;
+})();
+exports.Thumbnail = Thumbnail;
+},{"../internal/app":61,"./scene":29}],60:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var app_1 = require('../internal/app');
 /**
@@ -10269,7 +12612,7 @@ var Transition = (function () {
     return Transition;
 })();
 exports.Transition = Transition;
-},{"../internal/app":49}],49:[function(require,module,exports){
+},{"../internal/app":61}],61:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var internal_1 = require('./internal');
 var json_1 = require('./util/json');
@@ -10309,6 +12652,47 @@ var App = (function () {
             });
         });
     };
+    /** Gets all the items of the given condition as list */
+    App.getAsItemList = function (name) {
+        return new Promise(function (resolve, reject) {
+            var propsArr = [];
+            App.get(name).then(function (xml) {
+                try {
+                    var propsJSON = json_1.JSON.parse(xml);
+                    var recursion = function (children) {
+                        children.forEach(function (child) {
+                            if (child['tag'] === 'item')
+                                propsArr.push(child);
+                            //type 12 is considered as group and contains a wrapper placement for sub group items
+                            if (child['type'] === '12' && child.children && child.children.length > 0) {
+                                child.children.forEach(function (placement) {
+                                    if (placement['tag'] === 'placement' && placement.children && placement.children.length > 0) {
+                                        recursion(placement.children);
+                                    }
+                                });
+                            }
+                        });
+                    };
+                    //this is when it is actually getting from presetConfig
+                    if (propsJSON['tag'] === 'configuration' && propsJSON.children && propsJSON.children.length > 0) {
+                        //this is actually getting from each scene
+                        propsJSON.children.forEach(function (placement) {
+                            if (placement['tag'] === 'placement' && placement.children && placement.children.length > 0) {
+                                recursion(placement.children);
+                            }
+                        });
+                    }
+                    else if (propsJSON['tag'] === 'placement' && propsJSON.children && propsJSON.children.length > 0) {
+                        recursion(propsJSON.children);
+                    }
+                    resolve(propsArr);
+                }
+                catch (e) {
+                    resolve(propsArr);
+                }
+            });
+        });
+    };
     /** Get the value of the given global property */
     App.getGlobalProperty = function (name) {
         return new Promise(function (resolve) {
@@ -10333,11 +12717,15 @@ var App = (function () {
         });
     };
     /** Calls an application method asynchronously */
-    App.callFunc = function (func, arg) {
+    App.callFunc = function (func) {
+        var args = [];
+        for (var _i = 1; _i < arguments.length; _i++) {
+            args[_i - 1] = arguments[_i];
+        }
         return new Promise(function (resolve) {
-            internal_1.exec('AppCallFuncAsync', func, arg, function (ret) {
+            internal_1.exec.apply(void 0, ['AppCallFuncAsync', func].concat(args, [function (ret) {
                 resolve(ret);
-            });
+            }]));
         });
     };
     App.postMessage = function (key) {
@@ -10358,10 +12746,11 @@ var App = (function () {
     return App;
 })();
 exports.App = App;
-},{"./internal":53,"./util/json":56}],50:[function(require,module,exports){
+},{"./internal":65,"./util/json":68}],62:[function(require,module,exports){
 var internal_1 = require('./internal');
 var window_1 = require('../util/window');
 var remote_1 = require('./remote');
+var version_1 = require('./util/version');
 /**
  * Usage:
  *
@@ -10392,10 +12781,11 @@ var EventManager = (function () {
                     if (EventManager._remoteHandlers[_event] === undefined) {
                         EventManager._remoteHandlers[_event] = [];
                     }
-                    if (_event === 'OnSceneAddByUser') {
+                    if (EventManager._appEventsList.indexOf(_event) > -1) {
                         internal_1.exec('AppSubscribeEvents');
                     }
-                    else if (_event.startsWith('itempropchange_')) {
+                    else if (_event.startsWith('itempropchange_') ||
+                        _event.startsWith('itemdestroyed_')) {
                         var itemID = _event.split('_')[1];
                         internal_1.exec('ItemSubscribeEvents', itemID);
                     }
@@ -10408,10 +12798,11 @@ var EventManager = (function () {
                     if (EventManager._proxyHandlers[_event] === undefined) {
                         EventManager._proxyHandlers[_event] = [];
                     }
-                    if (_event === 'OnSceneAddByUser') {
+                    if (EventManager._appEventsList.indexOf(_event) > -1) {
                         internal_1.exec('AppSubscribeEvents');
                     }
-                    else if (_event.startsWith('itempropchange_')) {
+                    else if (_event.startsWith('itempropchange_') ||
+                        _event.startsWith('itemdestroyed_')) {
                         var itemID = _event.split('_')[1];
                         internal_1.exec('ItemSubscribeEvents', itemID);
                     }
@@ -10424,10 +12815,11 @@ var EventManager = (function () {
                         if (EventManager.callbacks[_event] === undefined) {
                             EventManager.callbacks[_event] = [];
                         }
-                        if (_event === 'OnSceneAddByUser') {
+                        if (EventManager._appEventsList.indexOf(_event) > -1) {
                             internal_1.exec('AppSubscribeEvents');
                         }
-                        else if (_event.startsWith('itempropchange_')) {
+                        else if (_event.startsWith('itempropchange_') ||
+                            _event.startsWith('itemdestroyed_')) {
                             var itemID = _event.split('_')[1];
                             internal_1.exec('ItemSubscribeEvents', itemID);
                         }
@@ -10462,10 +12854,12 @@ var EventManager = (function () {
     EventManager.callbacks = {};
     EventManager._remoteHandlers = {};
     EventManager._proxyHandlers = {};
+    EventManager._appEventsList = ['OnSceneAddByUser', 'OnSceneAdd', 'OnSceneDelete', 'OnSceneDeleteAll', 'scenedlg:1'];
     return EventManager;
 })();
 exports.EventManager = EventManager;
 window_1.default.OnMetersUpdate = function (evt) { };
+window_1.default.AppOnShowSettings = function (evt) { };
 var oldSetEvent = window_1.default.SetEvent;
 window_1.default.SetEvent = function (args) {
     var settings = [];
@@ -10495,18 +12889,22 @@ window_1.default.SetEvent = function (args) {
 };
 var oldAppOnEvent = window_1.default.AppOnEvent;
 window_1.default.AppOnEvent = function (event) {
+    var args = [];
+    for (var _i = 1; _i < arguments.length; _i++) {
+        args[_i - 1] = arguments[_i];
+    }
     if (remote_1.Remote.remoteType === 'proxy') {
         if (EventManager._proxyHandlers[event] === undefined)
             return;
         EventManager._proxyHandlers[event].map(function (_cb) {
-            _cb({ event: event });
+            _cb({ event: event, args: args });
         });
     }
     else {
         if (EventManager.callbacks[event] === undefined)
             return;
         EventManager.callbacks[event].map(function (_cb) {
-            _cb({ event: event });
+            _cb({ event: event, args: args });
         });
     }
     if (typeof oldAppOnEvent === 'function') {
@@ -10518,6 +12916,10 @@ window_1.default.OnEvent = function (event, item) {
     var eventArgs = [];
     for (var _i = 2; _i < arguments.length; _i++) {
         eventArgs[_i - 2] = arguments[_i];
+    }
+    if (event === 'itemremovedfromscene' && version_1.versionCompare(version_1.getVersion()).
+        is.greaterThanOrEqualTo(version_1.sceneUidAddDeleteVersion)) {
+        event = 'itemdestroyed';
     }
     if (remote_1.Remote.remoteType === 'proxy') {
         if (EventManager._proxyHandlers[event + '_' + item] === undefined)
@@ -10537,7 +12939,7 @@ window_1.default.OnEvent = function (event, item) {
         oldOnEvent(event);
     }
 };
-},{"../util/window":75,"./internal":53,"./remote":55}],51:[function(require,module,exports){
+},{"../util/window":93,"./internal":65,"./remote":67,"./util/version":72}],63:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var Global = (function () {
     function Global() {
@@ -10554,12 +12956,19 @@ var Global = (function () {
     Global.getPersistentConfig = function () {
         return Global.persistedConfig;
     };
+    Global.isListenToItemAdd = function () {
+        return Global.listenToItemAdd;
+    };
+    Global.setListenToItemAdd = function () {
+        Global.listenToItemAdd = true;
+    };
     Global.persistedConfig = {};
     Global.initialPromises = [];
+    Global.listenToItemAdd = false;
     return Global;
 })();
 exports.Global = Global;
-},{}],52:[function(require,module,exports){
+},{}],64:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var environment_1 = require('../core/environment');
 var item_1 = require('./item');
@@ -10680,10 +13089,15 @@ function informWhenConfigLoaded() {
         }
     });
 }
-function init() {
+function init(config) {
     global_1.Global.addInitializationPromise(readMetaConfigUrl());
     global_1.Global.addInitializationPromise(getCurrentSourceId());
-    global_1.Global.addInitializationPromise(informWhenConfigLoaded());
+    if (!(config && config['deferLoad'] !== undefined)) {
+        global_1.Global.addInitializationPromise(informWhenConfigLoaded());
+    }
+    if (config && config['listenToItemAdd'] !== undefined) {
+        global_1.Global.setListenToItemAdd();
+    }
     Promise.all(global_1.Global.getInitializationPromises()).then(function () {
         document.dispatchEvent(new CustomEvent('xsplit-js-ready', {
             bubbles: true
@@ -10691,7 +13105,7 @@ function init() {
     });
 }
 exports.default = init;
-},{"../core/environment":4,"../window/config":76,"./global":51,"./internal":53,"./item":54,"./util/version":59}],53:[function(require,module,exports){
+},{"../core/environment":4,"../window/config":94,"./global":63,"./internal":65,"./item":66,"./util/version":72}],65:[function(require,module,exports){
 /// <reference path="../../defs/window.d.ts" />
 var remote_1 = require('./remote');
 var window_1 = require('../util/window');
@@ -10701,10 +13115,26 @@ var _proxyCallbacks = {};
 var _remoteCallbacks = {};
 var counter = 0;
 /**
-* Executes an external function
-*/
+ * Executes an external function, and main callback handler for the XJS Framework.
+ *
+ * Since 2.9, this is exposed to provide an alternative way
+ * of handling new XBC properties, methods and item/source properties
+ * without having to wait for a new update.
+ * This requires some knowledge on the needed native XBC calls.
+ *
+ * Usage:
+ * (This sample is basically the same as
+ * {@link #core/App#getFrameTime getFrameTime})
+ *
+ * ```
+ * XJS.exec('AppGetPropertyAsync', 'frametime')
+ * .then(function(frametime) {
+ *   // do something here
+ * });
+ * ```
+ *
+ */
 function exec(funcName) {
-    var _this = this;
     var args = [];
     for (var _i = 1; _i < arguments.length; _i++) {
         args[_i - 1] = arguments[_i];
@@ -10750,7 +13180,7 @@ function exec(funcName) {
         if (window_1.default.external &&
             window_1.default.external[funcName] &&
             window_1.default.external[funcName] instanceof Function) {
-            ret = window_1.default.external[funcName].apply(_this, args);
+            ret = (_a = window_1.default.external)[funcName].apply(_a, args);
         }
         // register callback if present
         if (callback !== null) {
@@ -10774,23 +13204,29 @@ function exec(funcName) {
         // Sync calls end here for proxy and local
         if (remote_1.Remote.remoteType === 'proxy' && typeof (ret) !== 'number') {
             if (_proxyCallbacks[ret] !== undefined) {
-                resolve(_proxyCallbacks[ret].call(_this, decodeURIComponent(ret)));
+                var result = _proxyCallbacks[ret](decodeURIComponent(ret));
+                delete _proxyCallbacks[ret];
+                resolve(result);
+            }
+            else {
+                resolve(ret);
             }
         }
         else if (remote_1.Remote.remoteType === 'local') {
             resolve(ret);
         }
+        var _a;
     });
 }
 exports.exec = exec;
 // Only used by remote to use saved callback
 function finalCallback(message) {
-    var _this = this;
     return new Promise(function (resolve) {
         var result = JSON.parse(message);
         if (typeof (result['asyncId']) === 'number'
             && _remoteCallbacks[result['asyncId']] !== undefined) {
-            _remoteCallbacks[result['asyncId']].apply(_this, [result['result']]);
+            _remoteCallbacks[result['asyncId']](result['result']);
+            delete _remoteCallbacks[result['asyncId']];
         }
         else {
             resolve(result['result']);
@@ -10799,25 +13235,38 @@ function finalCallback(message) {
 }
 exports.finalCallback = finalCallback;
 var asyncCallback = window_1.default.OnAsyncCallback;
-window_1.default.OnAsyncCallback = function (asyncID, result) {
+window_1.default.OnAsyncCallback = function (asyncID) {
+    var result = [];
+    for (var _i = 1; _i < arguments.length; _i++) {
+        result[_i - 1] = arguments[_i];
+    }
+    var formattedResult;
+    try {
+        formattedResult = result.map(function (res) { return decodeURIComponent(res); });
+    }
+    catch (e) {
+        formattedResult = result;
+    }
     // Used by proxy to return Async calls
     if (remote_1.Remote.remoteType === 'proxy') {
         var callback = _proxyCallbacks[asyncID];
         if (callback instanceof Function) {
-            callback.call(this, decodeURIComponent(result));
+            callback.apply(void 0, formattedResult);
+            delete _proxyCallbacks[asyncID];
         }
     }
     else {
         var callback = _callbacks[asyncID];
         if (callback instanceof Function) {
-            callback.call(this, decodeURIComponent(result));
+            callback.apply(void 0, formattedResult);
+            delete _callbacks[asyncID];
         }
     }
     if (typeof asyncCallback === 'function') {
-        asyncCallback(asyncID, result);
+        asyncCallback.apply(void 0, [asyncID].concat(result));
     }
 };
-},{"../util/window":75,"./remote":55}],54:[function(require,module,exports){
+},{"../util/window":93,"./remote":67}],66:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var internal_1 = require('./internal');
 var environment_1 = require('../core/environment');
@@ -10896,16 +13345,14 @@ var Item = (function () {
                         }
                         else {
                             var idMatch, sceneMatch;
-                            app_1.App.getAsList('presetconfig')
+                            app_1.App.getAsItemList('sceneconfig')
                                 .then(function (jsonArr) {
                                 for (var i = 0; i < jsonArr.length; i++) {
-                                    if (jsonArr[i].children !== undefined) {
-                                        for (var j = 0; j < jsonArr[i].children.length; j++) {
-                                            if (jsonArr[i].children[j]['srcid'] === srcId) {
-                                                sceneMatch = i;
-                                                idMatch = jsonArr[i].children[j]['id'];
-                                                break;
-                                            }
+                                    if (jsonArr[i] !== undefined) {
+                                        if (jsonArr[i]['srcid'] === srcId) {
+                                            sceneMatch = i;
+                                            idMatch = jsonArr[i]['id'];
+                                            break;
                                         }
                                     }
                                     if (idMatch !== undefined) {
@@ -10919,7 +13366,7 @@ var Item = (function () {
                                 }
                                 else {
                                     return new Promise(function (previewResolve, previewReject) {
-                                        app_1.App.getAsList('presetconfig:i12')
+                                        app_1.App.getAsItemList('sceneconfig:i12')
                                             .then(function (previewJSONArr) {
                                             var previewMatch = '';
                                             for (var k = 0; k < previewJSONArr.length; ++k) {
@@ -11011,16 +13458,14 @@ var Item = (function () {
                         }
                         else {
                             var idMatch, sceneMatch;
-                            app_1.App.getAsList('presetconfig')
+                            app_1.App.getAsItemList('sceneconfig')
                                 .then(function (jsonArr) {
                                 for (var i = 0; i < jsonArr.length; i++) {
-                                    if (jsonArr[i].children !== undefined) {
-                                        for (var j = 0; j < jsonArr[i].children.length; j++) {
-                                            if (jsonArr[i].children[j]['srcid'] === srcId) {
-                                                sceneMatch = i;
-                                                idMatch = jsonArr[i].children[j]['id'];
-                                                break;
-                                            }
+                                    if (jsonArr[i] !== undefined) {
+                                        if (jsonArr[i]['srcid'] === srcId) {
+                                            sceneMatch = i;
+                                            idMatch = jsonArr[i]['id'];
+                                            break;
                                         }
                                     }
                                     if (idMatch !== undefined) {
@@ -11034,7 +13479,7 @@ var Item = (function () {
                                 }
                                 else {
                                     return new Promise(function (previewResolve, previewReject) {
-                                        app_1.App.getAsList('presetconfig:i12')
+                                        app_1.App.getAsItemList('sceneconfig:i12')
                                             .then(function (previewJSONArr) {
                                             var previewMatch = '';
                                             for (var k = 0; k < previewJSONArr.length; ++k) {
@@ -11124,7 +13569,7 @@ var Item = (function () {
     return Item;
 })();
 exports.Item = Item;
-},{"../core/environment":4,"../internal/app":49,"./internal":53,"./util/version":59}],55:[function(require,module,exports){
+},{"../core/environment":4,"../internal/app":61,"./internal":65,"./util/version":72}],67:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var internal_1 = require('./internal');
 var ready_1 = require('../util/ready');
@@ -11168,6 +13613,38 @@ var output_1 = require('../core/output');
 var Remote = (function () {
     function Remote() {
     }
+    /**
+     * param: (value: string) / remoteType
+     *
+     * Allows user to set the remoteType.
+     * May be used for instances that the extension may need to call a method locally.
+     *
+     * `Note: This may break handling of calls if the type is not returned to its original assignment`
+     */
+    Remote.setRemoteType = function (val) {
+        var xbcPattern = /XSplit Broadcaster\s(.*?)\s/;
+        var isInXBC = navigator.appVersion.match(xbcPattern);
+        return new Promise(function (resolve, reject) {
+            if (Remote._RemoteTypes.indexOf(val) > -1 && isInXBC && val !== Remote.remoteType) {
+                resolve(true);
+            }
+            else {
+                reject(Error('Unable to change the remoteType: Make sure the type is correct and the extension is in XBC.'));
+            }
+        });
+    };
+    /**
+     * param: (value: connection)
+     *
+     * Allows reassigning of `Remote.sendMessage` for instances when sending messages
+     * is replaced.
+     */
+    Remote.setSendMessage = function (newSendMessage) {
+        return new Promise(function (resolve) {
+            Remote.sendMessage = newSendMessage;
+            resolve(true);
+        });
+    };
     /**
      * param: (value: string)
      *
@@ -11344,7 +13821,7 @@ var Remote = (function () {
                     Ext.getId(messageObj['callback']);
                 }
                 else if (messageObj['type'] === 'broadcastChannels') {
-                    output_1.Output._getBroadcastChannels(messageObj['id'], messageObj['callback']);
+                    output_1.Output._getBroadcastChannels(messageObj['id'], messageObj['name'], messageObj['callback']);
                 }
                 else if (messageObj['type'] === 'event-manager') {
                     eventmanager_1.EventManager._finalCallback(messageObj['event']);
@@ -11353,6 +13830,7 @@ var Remote = (function () {
         });
     };
     Remote._isVersion = false;
+    Remote._RemoteTypes = ['local', 'remote', 'proxy'];
     /**
      * Initial assignment should be done on xjs.ready()
      * Types:
@@ -11364,7 +13842,7 @@ var Remote = (function () {
     return Remote;
 })();
 exports.Remote = Remote;
-},{"../core/extension":5,"../core/output":22,"../util/eventemitter":71,"../util/io":72,"../util/ready":73,"./eventmanager":50,"./internal":53}],56:[function(require,module,exports){
+},{"../core/extension":5,"../core/output":28,"../util/eventemitter":87,"../util/io":88,"../util/ready":90,"./eventmanager":62,"./internal":65}],68:[function(require,module,exports){
 var xml_1 = require('./xml');
 var JSON = (function () {
     function JSON(xml) {
@@ -11435,7 +13913,7 @@ var JSON = (function () {
     return JSON;
 })();
 exports.JSON = JSON;
-},{"./xml":60}],57:[function(require,module,exports){
+},{"./xml":73}],69:[function(require,module,exports){
 var Logger = (function () {
     function Logger() {
     }
@@ -11469,7 +13947,7 @@ var Logger = (function () {
     return Logger;
 })();
 exports.Logger = Logger;
-},{}],58:[function(require,module,exports){
+},{}],70:[function(require,module,exports){
 function applyMixins(derivedCtor, baseCtors) {
     baseCtors.forEach(function (baseCtor) {
         Object.getOwnPropertyNames(baseCtor.prototype).forEach(function (name) {
@@ -11481,7 +13959,82 @@ function applyMixins(derivedCtor, baseCtors) {
     });
 }
 exports.applyMixins = applyMixins;
-},{}],59:[function(require,module,exports){
+},{}],71:[function(require,module,exports){
+/**
+ * Check if splitmode is active
+ */
+var app_1 = require('../app');
+var scene_1 = require('../../core/scene');
+/**
+ * return: value<number>
+ *
+ * Returns splitmode value
+ */
+function splitMode() {
+    return new Promise(function (resolve) {
+        app_1.App.getGlobalProperty('splitmode').then(function (mode) {
+            resolve(mode === '1' ? 1 : 0);
+        });
+    });
+}
+exports.splitMode = splitMode;
+/**
+ * Used on addToScene methods
+ */
+function checkSplitmode(value) {
+    var scenePrefix = '';
+    var scenePromise;
+    return new Promise(function (resolve, reject) {
+        scenePromise = new Promise(function (sceneResolve) {
+            splitMode().then(function (res) {
+                if (res === 1 && !value) {
+                    scene_1.Scene.getActiveScene().then(function (val) {
+                        value = val;
+                        sceneResolve(value);
+                    });
+                }
+                else {
+                    sceneResolve(value);
+                }
+            });
+        });
+        scenePromise.then(function (val) {
+            if (typeof val === 'number' || val instanceof scene_1.Scene) {
+                scene_1.Scene.getSceneCount().then(function (sceneCount) {
+                    if (typeof val === 'number') {
+                        var int = Math.floor(val);
+                        if (int > sceneCount || int === 0) {
+                            reject(Error('Scene does not exist.'));
+                        }
+                        else {
+                            scenePrefix = 's:' + (int - 1) + '|';
+                            resolve(scenePrefix);
+                        }
+                    }
+                    else {
+                        val.getSceneNumber().then(function (int) {
+                            if (int > sceneCount || int === 0) {
+                                reject(Error('Scene does not exist.'));
+                            }
+                            else {
+                                scenePrefix = 's:' + (int - 1) + '|';
+                                resolve(scenePrefix);
+                            }
+                        });
+                    }
+                });
+            }
+            else if (typeof val === 'undefined') {
+                resolve('');
+            }
+            else {
+                reject(Error('Optional parameter \'scene\' only accepts integers or an XJS.Scene object'));
+            }
+        });
+    });
+}
+exports.checkSplitmode = checkSplitmode;
+},{"../../core/scene":29,"../app":61}],72:[function(require,module,exports){
 /*
 * List here the versions where we would limit a functionality.
 */
@@ -11491,6 +14044,10 @@ exports.addSceneEventFixVersion = '2.8.1606.1701';
 exports.handlePreStreamDialogFixVersion = '3.1.1707.3101';
 exports.globalsrcMinVersion = '2.9';
 exports.itemSubscribeEventVersion = '2.9.1608.2301';
+exports.sceneUidMinVersion = '3.0.1704.2101';
+exports.sceneUidAddDeleteVersion = '3.3.1801.1901';
+exports.scenePresetsVersion = '3.8.1905.2118';
+exports.sceneSourceVersion = '3.8.1915.2501';
 exports.mockVersion = '';
 function versionCompare(version) {
     var parts = version.split('.');
@@ -11532,7 +14089,7 @@ function setMockVersion(version) {
 }
 exports.setMockVersion = setMockVersion;
 function getVersion() {
-    var xbcPattern = /XSplit Broadcaster\s(.*?)\s/;
+    var xbcPattern = /(?:XSplit Broadcaster\s|XSplit\sBroadcaster\sPTR\s|XSplitBroadcaster\/|XSplitBroadcasterPTR\/)(.*?)\s/;
     var xbcMatch = navigator.appVersion.match(xbcPattern);
     xbcMatch = xbcMatch || exports.mockVersion.match(xbcPattern);
     if (xbcMatch !== null) {
@@ -11543,7 +14100,7 @@ function getVersion() {
     }
 }
 exports.getVersion = getVersion;
-},{}],60:[function(require,module,exports){
+},{}],73:[function(require,module,exports){
 var XML = (function () {
     function XML(json) {
         var attributes = '';
@@ -11598,7 +14155,7 @@ var XML = (function () {
     return XML;
 })();
 exports.XML = XML;
-},{}],61:[function(require,module,exports){
+},{}],74:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
@@ -11688,7 +14245,7 @@ var AudioDevice = (function () {
      *
      * ```javascript
      * var audioDataFlow = device.getDataFlow();
-     *   //where possible values are 'render' or 'capture'
+     *   //where possible values are 'Render' or 'Capture'
      * ```
      */
     AudioDevice.prototype.getDataFlow = function () {
@@ -11937,12 +14494,12 @@ var AudioDevice = (function () {
     return AudioDevice;
 })();
 exports.AudioDevice = AudioDevice;
-},{"../internal/util/json":56,"../internal/util/xml":60}],62:[function(require,module,exports){
+},{"../internal/util/json":68,"../internal/util/xml":73}],75:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
-var app_1 = require('../internal/app');
-var scene_1 = require('../core/scene');
+var splitmode_1 = require('../internal/util/splitmode');
+var addtosceneutil_1 = require('../util/addtosceneutil');
 /**
  * The CameraDevice Class is the object returned by
  * {@link #system/System System Class} getCameraDevices method. It provides
@@ -12038,83 +14595,37 @@ var CameraDevice = (function () {
     /**
      * param: (value?: number | Scene)
      * ```
-     * return: Promise<boolean>
+     * return: Promise<any>
      * ```
      *
      * Adds this camera device to the current scene by default.
      * Accepts an optional parameter value, which, when supplied,
      * points to the scene where item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
+     *
+     * Note: There is yet no way to detect error responses for this action.
      */
     CameraDevice.prototype.addToScene = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            var scenePrefix = '';
-            var scenePromise;
-            var checkSplitMode;
-            checkSplitMode = new Promise(function (splitPromise) {
-                app_1.App.getGlobalProperty('splitmode').then(function (res) {
-                    if (res === '1' && !value) {
-                        scene_1.Scene.getActiveScene().then(function (val) {
-                            value = val;
-                            splitPromise(value);
-                        });
-                    }
-                    else {
-                        splitPromise(value);
-                    }
-                });
-            });
-            checkSplitMode.then(function (value) {
-                if (typeof value === 'number' || value instanceof scene_1.Scene) {
-                    scenePromise = new Promise(function (innerResolve, innerReject) {
-                        scene_1.Scene.getSceneCount().then(function (sceneCount) {
-                            if (typeof value === 'number') {
-                                var int = Math.floor(value);
-                                if (int > sceneCount || int === 0) {
-                                    innerReject(Error('Scene not existing.'));
-                                }
-                                else {
-                                    scenePrefix = 's:' + (int - 1) + '|';
-                                    innerResolve();
-                                }
-                            }
-                            else {
-                                value.getSceneNumber().then(function (int) {
-                                    if (int > sceneCount || int === 0) {
-                                        innerReject(Error('Scene not existing.'));
-                                    }
-                                    else {
-                                        scenePrefix = 's:' + (int - 1) + '|';
-                                        innerResolve();
-                                    }
-                                });
-                            }
-                        });
-                    });
-                }
-                else if (typeof value === 'undefined') {
-                    scenePromise = Promise.resolve();
-                }
-                else {
-                    scenePromise = Promise.reject(Error('Optional parameter \'scene\' only accepts integers or an XJS.Scene object'));
-                }
-                scenePromise.then(function () {
-                    return app_1.App.callFunc(scenePrefix + 'addcamera', 'dev:' + _this._id);
-                }).then(function () {
-                    resolve(true);
-                }).catch(function (err) {
-                    reject(err);
-                });
+            splitmode_1.checkSplitmode(value).then(function (scenePrefix) {
+                return addtosceneutil_1.addToSceneHandler(scenePrefix + 'addcamera', 'dev:' + _this._id);
+            }).then(function (result) {
+                resolve(result);
+            }).catch(function (err) {
+                reject(err);
             });
         });
     };
+    ;
     return CameraDevice;
 })();
 exports.CameraDevice = CameraDevice;
-},{"../core/scene":23,"../internal/app":49,"../internal/util/json":56,"../internal/util/xml":60}],63:[function(require,module,exports){
+},{"../internal/util/json":68,"../internal/util/splitmode":71,"../internal/util/xml":73,"../util/addtosceneutil":85}],76:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
-var app_1 = require('../internal/app');
-var scene_1 = require('../core/scene');
+var splitmode_1 = require('../internal/util/splitmode');
+var addtosceneutil_1 = require('../util/addtosceneutil');
 /**
  *  Class for adding files (such as images and media)
  *  from your file system to the stage.
@@ -12140,87 +14651,41 @@ var File = (function () {
     /**
      * param: (value?: number | Scene)
      * ```
-     * return: Promise<boolean>
+     * return: Promise<any>
      * ```
      *
      * Adds this file to the current scene by default.
      * Accepts an optional parameter value, which, when supplied,
      * points to the scene where item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
+     *
+     * Note: There is yet no way to detect error responses for this action.
      */
     File.prototype.addToScene = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            var scenePrefix = '';
-            var scenePromise;
-            var checkSplitMode;
-            checkSplitMode = new Promise(function (splitPromise) {
-                app_1.App.getGlobalProperty('splitmode').then(function (res) {
-                    if (res === '1' && !value) {
-                        scene_1.Scene.getActiveScene().then(function (val) {
-                            value = val;
-                            splitPromise(value);
-                        });
-                    }
-                    else {
-                        splitPromise(value);
-                    }
-                });
-            });
-            checkSplitMode.then(function (value) {
-                if (typeof value === 'number' || value instanceof scene_1.Scene) {
-                    scenePromise = new Promise(function (innerResolve, innerReject) {
-                        scene_1.Scene.getSceneCount().then(function (sceneCount) {
-                            if (typeof value === 'number') {
-                                var int = Math.floor(value);
-                                if (int > sceneCount || int === 0) {
-                                    innerReject(Error('Scene not existing.'));
-                                }
-                                else {
-                                    scenePrefix = 's:' + (int - 1) + '|';
-                                    innerResolve();
-                                }
-                            }
-                            else {
-                                value.getSceneNumber().then(function (int) {
-                                    if (int > sceneCount || int === 0) {
-                                        innerReject(Error('Scene not existing.'));
-                                    }
-                                    else {
-                                        scenePrefix = 's:' + (int - 1) + '|';
-                                        innerResolve();
-                                    }
-                                });
-                            }
-                        });
-                    });
-                }
-                else if (typeof value === 'undefined') {
-                    scenePromise = Promise.resolve();
-                }
-                else {
-                    scenePromise = Promise.reject(Error('Optional parameter \'scene\' only accepts integers or an XJS.Scene object'));
-                }
-                scenePromise.then(function () {
-                    return app_1.App.callFunc(scenePrefix + 'addfile', _this._path);
-                }).then(function () {
-                    resolve(true);
-                }).catch(function (err) {
-                    reject(err);
-                });
+            splitmode_1.checkSplitmode(value).then(function (scenePrefix) {
+                return addtosceneutil_1.addToSceneHandler(scenePrefix + 'addfile', _this._path);
+            }).then(function (result) {
+                resolve(result);
+            }).catch(function (err) {
+                reject(err);
             });
         });
     };
     return File;
 })();
 exports.File = File;
-},{"../core/scene":23,"../internal/app":49}],64:[function(require,module,exports){
+},{"../internal/util/splitmode":71,"../util/addtosceneutil":85}],77:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var rectangle_1 = require('../util/rectangle');
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
 var app_1 = require('../internal/app');
 var environment_1 = require('../core/environment');
-var scene_1 = require('../core/scene');
+var splitmode_1 = require('../internal/util/splitmode');
+var addtosceneutil_1 = require('../util/addtosceneutil');
 /**
  * The Game Class is the object returned by {@link #system/System System Class}
  * getGames method. It provides you with methods to fetch the game object's
@@ -12464,73 +14929,26 @@ var Game = (function () {
     /**
      * param: (value?: number | Scene)
      * ```
-     * return: Promise<boolean>
+     * return: Promise<any>
      * ```
      *
      * Adds this game to the current scene by default.
      * Accepts an optional parameter value, which, when supplied,
      * points to the scene where item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
+     *
+     * Note: There is yet no way to detect error responses for this action.
      */
     Game.prototype.addToScene = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            var scenePrefix = '';
-            var scenePromise;
-            var checkSplitMode;
-            checkSplitMode = new Promise(function (splitPromise) {
-                app_1.App.getGlobalProperty('splitmode').then(function (res) {
-                    if (res === '1' && !value) {
-                        scene_1.Scene.getActiveScene().then(function (val) {
-                            value = val;
-                            splitPromise(value);
-                        });
-                    }
-                    else {
-                        splitPromise(value);
-                    }
-                });
-            });
-            checkSplitMode.then(function (value) {
-                if (typeof value === 'number' || value instanceof scene_1.Scene) {
-                    scenePromise = new Promise(function (innerResolve, innerReject) {
-                        scene_1.Scene.getSceneCount().then(function (sceneCount) {
-                            if (typeof value === 'number') {
-                                var int = Math.floor(value);
-                                if (int > sceneCount || int === 0) {
-                                    innerReject(Error('Scene not existing.'));
-                                }
-                                else {
-                                    scenePrefix = 's:' + (int - 1) + '|';
-                                    innerResolve();
-                                }
-                            }
-                            else {
-                                value.getSceneNumber().then(function (int) {
-                                    if (int > sceneCount || int === 0) {
-                                        innerReject(Error('Scene not existing.'));
-                                    }
-                                    else {
-                                        scenePrefix = 's:' + (int - 1) + '|';
-                                        innerResolve();
-                                    }
-                                });
-                            }
-                        });
-                    });
-                }
-                else if (typeof value === 'undefined') {
-                    scenePromise = Promise.resolve();
-                }
-                else {
-                    scenePromise = Promise.reject(Error('Optional parameter \'scene\' only accepts integers or an XJS.Scene object'));
-                }
-                scenePromise.then(function () {
-                    return app_1.App.callFunc(scenePrefix + 'addgamesource', 'dev:' + _this.toXML());
-                }).then(function () {
-                    resolve(true);
-                }).catch(function (err) {
-                    reject(err);
-                });
+            splitmode_1.checkSplitmode(value).then(function (scenePrefix) {
+                return addtosceneutil_1.addToSceneHandler(scenePrefix + 'addgamesource', 'dev:' + _this.toXML());
+            }).then(function (result) {
+                resolve(result);
+            }).catch(function (err) {
+                reject(err);
             });
         });
     };
@@ -12566,101 +14984,50 @@ var Game = (function () {
             ad._imagename = "";
             Game._autoDetect.addToScene = function (value) {
                 return new Promise(function (resolve, reject) {
-                    var scenePrefix = '';
-                    var scenePromise;
-                    var checkSplitMode;
-                    checkSplitMode = new Promise(function (splitPromise) {
-                        app_1.App.getGlobalProperty('splitmode').then(function (res) {
-                            if (res === '1' && !value) {
-                                scene_1.Scene.getActiveScene().then(function (val) {
-                                    value = val;
-                                    splitPromise(value);
-                                });
-                            }
-                            else {
-                                splitPromise(value);
-                            }
-                        });
-                    });
-                    checkSplitMode.then(function (value) {
-                        if (typeof value === 'number' || value instanceof scene_1.Scene) {
-                            scenePromise = new Promise(function (innerResolve, innerReject) {
-                                scene_1.Scene.getSceneCount().then(function (sceneCount) {
-                                    if (typeof value === 'number') {
-                                        var int = Math.floor(value);
-                                        if (int > sceneCount || int === 0) {
-                                            innerReject(Error('Scene not existing.'));
-                                        }
-                                        else {
-                                            scenePrefix = 's:' + (int - 1) + '|';
-                                            innerResolve();
-                                        }
-                                    }
-                                    else {
-                                        value.getSceneNumber().then(function (int) {
-                                            if (int > sceneCount || int === 0) {
-                                                innerReject(Error('Scene not existing.'));
-                                            }
-                                            else {
-                                                scenePrefix = 's:' + (int - 1) + '|';
-                                                innerResolve();
-                                            }
-                                        });
-                                    }
+                    splitmode_1.checkSplitmode(value).then(function (scenePrefix) {
+                        var defposPromise;
+                        if (environment_1.Environment.isSourcePlugin()) {
+                            defposPromise = new Promise(function (defposResolve) {
+                                app_1.App.get('sceneconfig:-1').then(function (presetConfig) {
+                                    var placementJSON = json_1.JSON.parse(presetConfig);
+                                    defposResolve(placementJSON['defpos']);
                                 });
                             });
-                        }
-                        else if (typeof value === 'undefined') {
-                            scenePromise = Promise.resolve();
                         }
                         else {
-                            scenePromise = Promise.reject(Error('Optional parameter \'scene\' only accepts integers or an XJS.Scene object'));
-                        }
-                        scenePromise.then(function () {
-                            var defposPromise;
-                            if (environment_1.Environment.isSourcePlugin()) {
-                                defposPromise = new Promise(function (defposResolve) {
-                                    app_1.App.get('presetconfig:-1').then(function (presetConfig) {
-                                        var placementJSON = json_1.JSON.parse(presetConfig);
-                                        defposResolve(placementJSON['defpos']);
-                                    });
+                            defposPromise = new Promise(function (defposResolve) {
+                                app_1.App.get('scene:0').then(function (main) {
+                                    return app_1.App.get('sceneconfig:' + main);
+                                }).then(function (presetConfig) {
+                                    var placementJSON = json_1.JSON.parse(presetConfig);
+                                    defposResolve(placementJSON['defpos']);
                                 });
+                            });
+                        }
+                        defposPromise.then(function (defpos) {
+                            var posString;
+                            if (defpos === '0') {
+                                posString = 'pos_left="0" pos_top="0" pos_right="0.5" pos_bottom="0.5"';
+                            }
+                            else if (defpos === '1') {
+                                posString = 'pos_left="0.5" pos_top="0" pos_right="1" pos_bottom="0.5"';
+                            }
+                            else if (defpos === '2') {
+                                posString = 'pos_left="0" pos_top="0.5" pos_right="0.5" pos_bottom="1"';
+                            }
+                            else if (defpos === '3') {
+                                posString = 'pos_left="0.5" pos_top="0.5" pos_right="1" pos_bottom="1"';
                             }
                             else {
-                                defposPromise = new Promise(function (defposResolve) {
-                                    app_1.App.get('preset:0').then(function (main) {
-                                        return app_1.App.get('presetconfig:' + main);
-                                    }).then(function (presetConfig) {
-                                        var placementJSON = json_1.JSON.parse(presetConfig);
-                                        defposResolve(placementJSON['defpos']);
-                                    });
-                                });
+                                posString = 'pos_left="0.25" pos_top="0.25" pos_right="0.75" pos_bottom="0.75"';
                             }
-                            defposPromise.then(function (defpos) {
-                                var posString;
-                                if (defpos === '0') {
-                                    posString = 'pos_left="0" pos_top="0" pos_right="0.5" pos_bottom="0.5"';
-                                }
-                                else if (defpos === '1') {
-                                    posString = 'pos_left="0.5" pos_top="0" pos_right="1" pos_bottom="0.5"';
-                                }
-                                else if (defpos === '2') {
-                                    posString = 'pos_left="0" pos_top="0.5" pos_right="0.5" pos_bottom="1"';
-                                }
-                                else if (defpos === '3') {
-                                    posString = 'pos_left="0.5" pos_top="0.5" pos_right="1" pos_bottom="1"';
-                                }
-                                else {
-                                    posString = 'pos_left="0.25" pos_top="0.25" pos_right="0.75" pos_bottom="0.75"';
-                                }
-                                var adstring = '<item GameCapTrackActive="1" GameCapTrackActiveFullscreen="0" item="&lt;src pid=&quot;0&quot; handle=&quot;0&quot; hwnd=&quot;0&quot; GapiType=&quot;&quot; width=&quot;0&quot; height=&quot;0&quot; flags=&quot;0&quot; wndname=&quot;&quot; lastframets=&quot;0&quot; fpsRender=&quot;0.000000&quot; fpsCapture=&quot;0.000000&quot; imagename=&quot;&quot;/&gt; " name="Game: Auto Detect"  type="7" ' + posString + ' />';
-                                return app_1.App.callFunc(scenePrefix + 'additem', adstring);
-                            }).then(function () {
-                                resolve(true);
-                            });
-                        }).catch(function (err) {
-                            reject(err);
+                            var adstring = '<item GameCapTrackActive="1" GameCapTrackActiveFullscreen="0" item="&lt;src pid=&quot;0&quot; handle=&quot;0&quot; hwnd=&quot;0&quot; GapiType=&quot;&quot; width=&quot;0&quot; height=&quot;0&quot; flags=&quot;0&quot; wndname=&quot;&quot; lastframets=&quot;0&quot; fpsRender=&quot;0.000000&quot; fpsCapture=&quot;0.000000&quot; imagename=&quot;&quot;/&gt; " name="Game: Auto Detect"  type="7" ' + posString + ' />';
+                            return addtosceneutil_1.addToSceneHandler(scenePrefix + 'additem', adstring);
+                        }).then(function (result) {
+                            resolve(result);
                         });
+                    }).catch(function (err) {
+                        reject(err);
                     });
                 });
             };
@@ -12670,12 +15037,99 @@ var Game = (function () {
     return Game;
 })();
 exports.Game = Game;
-},{"../core/environment":4,"../core/scene":23,"../internal/app":49,"../internal/util/json":56,"../internal/util/xml":60,"../util/rectangle":74}],65:[function(require,module,exports){
+},{"../core/environment":4,"../internal/app":61,"../internal/util/json":68,"../internal/util/splitmode":71,"../internal/util/xml":73,"../util/addtosceneutil":85,"../util/rectangle":91}],78:[function(require,module,exports){
+/// <reference path="../../defs/es6-promise.d.ts" />
+var item_1 = require('../core/items/item');
+var app_1 = require('../internal/app');
+var splitmode_1 = require('../internal/util/splitmode');
+var addtosceneutil_1 = require('../util/addtosceneutil');
+/**
+ *  Class for combining several Items into a group
+ *
+ * ### Basic Usage
+ *
+ * ```javascript
+ * var XJS = require('xjs');
+ * var myScene;
+ * var Group = XJS.Group;
+ * xjs.Scene.getActiveScene()
+ * .then(function(scene) {
+ *   myScene = scene;
+ *   return myScene.getItems();
+ * }).then(function(items) {
+ *   var newGroup = new Group(items);
+ *   newGroup.addToScene();
+ * })
+ *
+ *
+ * ```
+ */
+var Group = (function () {
+    function Group(itemArray) {
+        this._items = itemArray;
+    }
+    Group.prototype.toStringArray = function () {
+        var itemStringArray = this._items.map(function (item) {
+            if (item instanceof item_1.Item) {
+                return item._id;
+            }
+            else {
+                return item;
+            }
+        });
+        return itemStringArray;
+    };
+    /**
+     * param: (value?: number | Scene)
+     * ```
+     * return: Promise<any>
+     * ```
+     *
+     * Adds this group to the current scene by default.
+     * Accepts an optional parameter value, which, when supplied,
+     * points to the scene where item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
+     *
+     * Note: There is yet no way to detect error responses for this action.
+     */
+    Group.prototype.addToScene = function (value) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var splitScene;
+            var activeSceneIdx;
+            app_1.App.get('scene').then(function (sceneIdx) {
+                activeSceneIdx = sceneIdx;
+                return splitmode_1.checkSplitmode(value);
+            }).then(function (scenePrefix) {
+                splitScene = scenePrefix;
+                if (scenePrefix.split(':')[1]) {
+                    activeSceneIdx = scenePrefix.split(':')[1];
+                }
+                return app_1.App.get("scenecanaddgroup:" + activeSceneIdx + ":" + _this.toStringArray().join(','));
+            }).then(function (canAdd) {
+                if (canAdd === '1') {
+                    return addtosceneutil_1.addToSceneHandler.apply(void 0, [splitScene + 'addgroup'].concat(_this.toStringArray()));
+                }
+                else {
+                    reject('Items provided cannot be grouped');
+                }
+            }).then(function (result) {
+                resolve(result);
+            }).catch(function (err) {
+                reject(err);
+            });
+        });
+    };
+    return Group;
+})();
+exports.Group = Group;
+},{"../core/items/item":20,"../internal/app":61,"../internal/util/splitmode":71,"../util/addtosceneutil":85}],79:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
-var app_1 = require('../internal/app');
-var scene_1 = require('../core/scene');
+var splitmode_1 = require('../internal/util/splitmode');
+var addtosceneutil_1 = require('../util/addtosceneutil');
 /**
  * The MicrophoneDevice class provides you with methods to add a microphone
  * device as a source on the stage.
@@ -12725,6 +15179,20 @@ var MicrophoneDevice = (function () {
         return this._disp;
     };
     /**
+     * return: string
+     *
+     * Gets the device name
+     *
+     * #### Usage
+     *
+     * ```javascript
+     * var micName = device.getName();
+     * ```
+     */
+    MicrophoneDevice.prototype.getName = function () {
+        return this._name;
+    };
+    /**
      * return: XML
      *
      * Converts Microphone object into an XML object
@@ -12747,85 +15215,137 @@ var MicrophoneDevice = (function () {
     /**
      * param: (value?: number | Scene)
      * ```
-     * return: Promise<boolean>
+     * return: Promise<any>
      * ```
      *
      * Adds this microphone device to the current scene by default.
      * Accepts an optional parameter value, which, when supplied,
      * points to the scene where item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
+     *
+     * Note: There is yet no way to detect error responses for this action.
      */
     MicrophoneDevice.prototype.addToScene = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            var scenePrefix = '';
-            var scenePromise;
-            var checkSplitMode;
-            checkSplitMode = new Promise(function (splitPromise) {
-                app_1.App.getGlobalProperty('splitmode').then(function (res) {
-                    if (res === '1' && !value) {
-                        scene_1.Scene.getActiveScene().then(function (val) {
-                            value = val;
-                            splitPromise(value);
-                        });
-                    }
-                    else {
-                        splitPromise(value);
-                    }
-                });
-            });
-            checkSplitMode.then(function (value) {
-                if (typeof value === 'number' || value instanceof scene_1.Scene) {
-                    scenePromise = new Promise(function (innerResolve, innerReject) {
-                        scene_1.Scene.getSceneCount().then(function (sceneCount) {
-                            if (typeof value === 'number') {
-                                var int = Math.floor(value);
-                                if (int > sceneCount || int === 0) {
-                                    innerReject(Error('Scene not existing.'));
-                                }
-                                else {
-                                    scenePrefix = 's:' + (int - 1) + '|';
-                                    innerResolve();
-                                }
-                            }
-                            else {
-                                value.getSceneNumber().then(function (int) {
-                                    if (int > sceneCount || int === 0) {
-                                        innerReject(Error('Scene not existing.'));
-                                    }
-                                    else {
-                                        scenePrefix = 's:' + (int - 1) + '|';
-                                        innerResolve();
-                                    }
-                                });
-                            }
-                        });
-                    });
-                }
-                else if (typeof value === 'undefined') {
-                    scenePromise = Promise.resolve();
-                }
-                else {
-                    scenePromise = Promise.reject(Error('Optional parameter \'scene\' only accepts integers or an XJS.Scene object'));
-                }
-                scenePromise.then(function () {
-                    return app_1.App.callFunc(scenePrefix + 'additem', _this.toXML().toString());
-                }).then(function () {
-                    resolve(true);
-                }).catch(function (err) {
-                    reject(err);
-                });
+            splitmode_1.checkSplitmode(value).then(function (scenePrefix) {
+                return addtosceneutil_1.addToSceneHandler(scenePrefix + 'additem', _this.toXML().toString());
+            }).then(function (result) {
+                resolve(result);
+            }).catch(function (err) {
+                reject(err);
             });
         });
     };
     return MicrophoneDevice;
 })();
 exports.MicrophoneDevice = MicrophoneDevice;
-},{"../core/scene":23,"../internal/app":49,"../internal/util/json":56,"../internal/util/xml":60}],66:[function(require,module,exports){
+},{"../internal/util/json":68,"../internal/util/splitmode":71,"../internal/util/xml":73,"../util/addtosceneutil":85}],80:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
-var internal_1 = require('../internal/internal');
-var app_1 = require('../internal/app');
-var scene_1 = require('../core/scene');
+var splitmode_1 = require('../internal/util/splitmode');
+var json_1 = require('../internal/util/json');
+var xml_1 = require('../internal/util/xml');
+var addtosceneutil_1 = require('../util/addtosceneutil');
+var REPLAY_INCREMENT_COUNTER = 0;
+var generateReplayName = function () {
+    REPLAY_INCREMENT_COUNTER++;
+    return Date.now() + ("_replay#" + REPLAY_INCREMENT_COUNTER);
+};
+/**
+ *  The Class for combining several Items into a group.
+ *  This can be initialized with an optional object parameter,
+ *  which may contain the following:
+ *    * buffer - the replay time, which ranges from 1-120 seconds. Default is 10.
+ *    * channelName - the name of the channel where the replay will come from. Default is auto.
+ *    * hotkey - the numerical equivalent of the keyboard combination to trigger the replay. Default is 0.
+ *             - This allots for the modifiers shift(65536), ctrl(131072), and alt(262144) keys
+ *             - Sample computation for Ctrl + Shift + K = (keycode.which | 131072) | 65536 = 75 | 131072 | 65536 = 196683
+ *
+ * ### Basic Usage
+ *
+ * ```javascript
+ * var XJS = require('xjs');
+ * var Replay = XJS.Replay;
+ * xjs.Output.getOutputList()
+ * .then(function(outputs) {
+ *   return outputs[0].getName();
+ * }).then(function(name) {
+ *   var newReplay = new Replay({
+ *     buffer: 20,
+ *     channelName: name
+ *   });
+ *   newReplay.addToScene();
+ * })
+ *
+ * ```
+ */
+var Replay = (function () {
+    function Replay(replayOptions) {
+        this._buffer = replayOptions && replayOptions['buffer'] || 10;
+        this._channelName = replayOptions && replayOptions['channelName'] || 'auto';
+        this._hotkey = replayOptions && replayOptions['hotkey'] || 0;
+        this._propName = 'Replay';
+    }
+    Replay.prototype.toXML = function () {
+        var replay = new json_1.JSON();
+        replay.tag = 'item';
+        replay['item'] = generateReplayName();
+        replay['name'] = this._propName;
+        replay['type'] = '13'; // type REPLAY
+        replay['selfclosing'] = false;
+        var bufferJXON = new json_1.JSON();
+        bufferJXON.tag = 'presproperty';
+        bufferJXON.value = String(this._buffer);
+        bufferJXON['__map_id'] = 'buffer';
+        bufferJXON['selfclosing'] = false;
+        var channelNameJXON = new json_1.JSON();
+        channelNameJXON.tag = 'presproperty';
+        channelNameJXON.value = this._channelName;
+        channelNameJXON['__map_id'] = 'channelName';
+        channelNameJXON['selfclosing'] = false;
+        var hotkeyJXON = new json_1.JSON();
+        hotkeyJXON.tag = 'presproperty';
+        hotkeyJXON.value = String(this._hotkey);
+        hotkeyJXON['__map_id'] = 'hotkey';
+        hotkeyJXON['selfclosing'] = false;
+        replay.children = [bufferJXON, channelNameJXON, hotkeyJXON];
+        return xml_1.XML.parseJSON(replay);
+    };
+    /**
+     * param: (value?: number | Scene)
+     * ```
+     * return: Promise<any>
+     * ```
+     *
+     * Adds this replay object to the current scene by default.
+     * Accepts an optional parameter value, which, when supplied,
+     * points to the scene where item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
+     *
+     * Note: There is yet no way to detect error responses for this action.
+     */
+    Replay.prototype.addToScene = function (value) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            splitmode_1.checkSplitmode(value).then(function (scenePrefix) {
+                return addtosceneutil_1.addToSceneHandler(scenePrefix + 'additem', _this.toXML().toString());
+            }).then(function (result) {
+                resolve(result);
+            }).catch(function (err) {
+                reject(err);
+            });
+        });
+    };
+    return Replay;
+})();
+exports.Replay = Replay;
+},{"../internal/util/json":68,"../internal/util/splitmode":71,"../internal/util/xml":73,"../util/addtosceneutil":85}],81:[function(require,module,exports){
+/// <reference path="../../defs/es6-promise.d.ts" />
 var environment_1 = require('../core/environment');
+var splitmode_1 = require('../internal/util/splitmode');
+var addtosceneutil_1 = require('../util/addtosceneutil');
 /**
  * The Screen Class is the object returned by {@link #system/System System Class}
  * getAvailableScreens method. It provides you with methods to add the screen object
@@ -12856,59 +15376,29 @@ var Screen = (function () {
     /**
      * param: (value?: number | Scene)
      * ```
-     * return: Promise<boolean>
+     * return: Promise<any>
      * ```
      *
      * Adds the prepared screen instance to the current screen by defualt.
      * Accpets optional parameter value, whhich when supplied, points
      * to the scene where the item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
      *
+     * Note: There is yet no way to detect error responses for this action.
      */
     Screen.prototype.addToScene = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
+            var scenePrefix = '';
             if (_this instanceof Screen && !environment_1.Environment.isSourcePlugin()) {
-                var scenePrefix = '';
-                var scenePromise;
-                if (typeof value === 'number' || value instanceof scene_1.Scene) {
-                    scenePromise = new Promise(function (innerResolve, innerReject) {
-                        scene_1.Scene.getSceneCount().then(function (sceneCount) {
-                            if (typeof value === 'number') {
-                                var int = Math.floor(value);
-                                if (int > sceneCount || int === 0) {
-                                    innerReject(new Error('Scene not existing.'));
-                                }
-                                else {
-                                    scenePrefix = 's:' + (int - 1) + '|';
-                                    innerResolve();
-                                }
-                            }
-                            else {
-                                value.getSceneNumber().then(function (int) {
-                                    if (int > sceneCount || int === 0) {
-                                        innerReject(new Error('Scene not existing.'));
-                                    }
-                                    else {
-                                        scenePrefix = 's:' + (int - 1) + '|';
-                                        innerResolve();
-                                    }
-                                });
-                            }
-                        });
-                    });
-                }
-                else if (typeof value === 'undefined') {
-                    scenePromise = Promise.resolve();
-                }
-                else {
-                    scenePromise = Promise.reject(new Error('Optional parameter \'scene\' only accepts integers or an XJS.Scene object'));
-                }
-                scenePromise.then(function () {
+                splitmode_1.checkSplitmode(value).then(function (prefix) {
+                    scenePrefix = prefix;
                     return "<screen module=\"" + _this._processDetail + "\" window=\"" + _this._title + "\" class=\"" + _this._class + "\" hwnd=\"" + _this._hwnd + "\" wclient=\"1\" left=\"0\" top=\"0\" width=\"0\" height=\"0\" />";
                 }).then(function (screen) {
-                    return app_1.App.callFunc(scenePrefix + 'addscreen', screen);
-                }).then(function () {
-                    resolve(true);
+                    return addtosceneutil_1.addToSceneHandler(scenePrefix + 'addscreen', screen);
+                }).then(function (result) {
+                    resolve(result);
                 }).catch(function (err) {
                     reject(err);
                 });
@@ -12921,73 +15411,26 @@ var Screen = (function () {
     /**
      * param: (value?: number | Scene)
      * ```
-     * return: Promise<boolean>
+     * return: Promise<any>
      * ```
      *
      * Initializes the screen region selector crosshair
      * so user may select a desktop region or a window to add to the stage in the current scene.
      * Accepts an optional parameter value, which, when supplied,
      * points to the scene where item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
      *
+     * Note: There is yet no way to detect error responses for this action.
      */
     Screen.addToScene = function (value) {
         return new Promise(function (resolve, reject) {
-            var scenePrefix = '';
-            var scenePromise;
-            var checkSplitMode;
-            checkSplitMode = new Promise(function (splitPromise) {
-                app_1.App.getGlobalProperty('splitmode').then(function (res) {
-                    if (res === '1' && !value) {
-                        scene_1.Scene.getActiveScene().then(function (val) {
-                            value = val;
-                            splitPromise(value);
-                        });
-                    }
-                    else {
-                        splitPromise(value);
-                    }
-                });
-            });
-            checkSplitMode.then(function (value) {
-                if (typeof value === 'number' || value instanceof scene_1.Scene) {
-                    scenePromise = new Promise(function (innerResolve, innerReject) {
-                        scene_1.Scene.getSceneCount().then(function (sceneCount) {
-                            if (typeof value === 'number') {
-                                var int = Math.floor(value);
-                                if (int > sceneCount || int === 0) {
-                                    innerReject(Error('Scene not existing.'));
-                                }
-                                else {
-                                    scenePrefix = 's:' + (int - 1) + '|';
-                                    innerResolve();
-                                }
-                            }
-                            else {
-                                value.getSceneNumber().then(function (int) {
-                                    if (int > sceneCount || int === 0) {
-                                        innerReject(Error('Scene not existing.'));
-                                    }
-                                    else {
-                                        scenePrefix = 's:' + (int - 1) + '|';
-                                        innerResolve();
-                                    }
-                                });
-                            }
-                        });
-                    });
-                }
-                else if (typeof value === 'undefined') {
-                    scenePromise = Promise.resolve();
-                }
-                else {
-                    scenePromise = Promise.reject(Error('Optional parameter \'scene\' only accepts integers or an XJS.Scene object'));
-                }
-                scenePromise.then(function () {
-                    internal_1.exec('AppCallFunc', scenePrefix + 'addscreen');
-                    resolve(true);
-                }).catch(function (err) {
-                    reject(err);
-                });
+            splitmode_1.checkSplitmode(value).then(function (scenePrefix) {
+                return addtosceneutil_1.addToSceneHandler(scenePrefix + 'addscreen', null);
+            }).then(function (result) {
+                resolve(result);
+            }).catch(function (err) {
+                reject(err);
             });
         });
     };
@@ -13018,7 +15461,7 @@ var Screen = (function () {
     return Screen;
 })();
 exports.Screen = Screen;
-},{"../core/environment":4,"../core/scene":23,"../internal/app":49,"../internal/internal":53}],67:[function(require,module,exports){
+},{"../core/environment":4,"../internal/util/splitmode":71,"../util/addtosceneutil":85}],82:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var app_1 = require('../internal/app');
 var audio_1 = require('./audio');
@@ -13155,14 +15598,13 @@ var System = (function () {
                 if (devicesJSON !== undefined) {
                     for (var _i = 0; _i < devicesJSON.length; _i++) {
                         var device = devicesJSON[_i];
-                        if (String(device['disp']).toLowerCase().indexOf('xsplit') === -1 &&
-                            String(device['disp']).toLowerCase() !==
-                                ('@DEVICE:SW:{860BB310-5D01-11D0-BD3B-00A0C911CE86}\\' +
-                                    '{778abfb2-e87b-48a2-8d33-675150fcf8a2}').toLowerCase() &&
+                        var dispUpperCase = String(device['disp']).toUpperCase();
+                        if (dispUpperCase.indexOf('XSPLIT') === -1 &&
+                            dispUpperCase !== '@DEVICE:SW:{860BB310-5D01-11D0-BD3B-00A0C911CE86}\\{778ABFB2-E87B-48A2-8D33-675150FCF8A2}' &&
                             String(device['name']).toLowerCase().indexOf(('Intel(R) RealSense(TM) 3D Camera Virtual Driver').toLowerCase()) === -1 &&
                             String(device['name']).toLowerCase().indexOf(('Intel(R) RealSense(TM) Camera SR300 Virtual Driver').toLowerCase()) === -1 &&
-                            String(device['disp']).toLowerCase().indexOf(('@DEVICE:PNP:\\\\?\\USB#VID_8086&PID_0AA5&MI_02#').toLowerCase()) === -1 &&
-                            String(device['disp']).toLowerCase().indexOf(('@DEVICE:PNP:\\\\?\\USB#VID_8086&PID_0A66&MI_02#').toLowerCase()) === -1) {
+                            dispUpperCase.indexOf(('@DEVICE:PNP:\\\\?\\USB#VID_8086&PID_0AA5&MI_02#')) === -1 &&
+                            dispUpperCase.indexOf(('@DEVICE:PNP:\\\\?\\USB#VID_8086&PID_0A66&MI_02#')) === -1) {
                             devices.push(camera_1.CameraDevice.parse(device));
                         }
                     }
@@ -13262,10 +15704,10 @@ var System = (function () {
             }).then(function (windowDetailsArr) {
                 var devices = windowDetailsArr
                     .filter(function (windowDetail) { return windowDetail[0] !== ''; })
-                    .filter(function (windowDetail) { return windowDetail[0].indexOf('XSplit Broadcaster') !== 0; })
-                    .filter(function (windowDetail) { return windowDetail[1].indexOf('Shell_TrayWnd') !== 0; })
-                    .filter(function (windowDetail) { return windowDetail[1].indexOf('Button') !== 0; })
-                    .filter(function (windowDetail) { return windowDetail[1].indexOf('Windows.UI.Core.CoreWindow') !== 0; })
+                    .filter(function (windowDetail) { return windowDetail[0].toUpperCase().indexOf('XSPLIT BROADCASTER') !== 0; })
+                    .filter(function (windowDetail) { return windowDetail[1].toUpperCase().indexOf('SHELL_TRAYWND') !== 0; })
+                    .filter(function (windowDetail) { return windowDetail[1].toUpperCase().indexOf('BUTTON') !== 0; })
+                    .filter(function (windowDetail) { return windowDetail[1].toUpperCase().indexOf('WINDOWS.UI.CORE.COREWINDOW') !== 0; })
                     .map(function (windowDetail) {
                     dll_1.Dll.call('xsplit.GetProcessDetailsKernel', windowDetail[2])
                         .then(function (detail) {
@@ -13387,10 +15829,10 @@ var System = (function () {
     return System;
 })();
 exports.System = System;
-},{"../core/dll":3,"../core/environment":4,"../internal/app":49,"../internal/internal":53,"./audio":61,"./camera":62,"./game":64,"./microphone":65,"./screen":66}],68:[function(require,module,exports){
+},{"../core/dll":3,"../core/environment":4,"../internal/app":61,"../internal/internal":65,"./audio":74,"./camera":75,"./game":77,"./microphone":79,"./screen":81}],83:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
-var app_1 = require('../internal/app');
-var scene_1 = require('../core/scene');
+var splitmode_1 = require('../internal/util/splitmode');
+var addtosceneutil_1 = require('../util/addtosceneutil');
 /**
  *  Class for adding a web source to the stage.
  *  URLs will use http by default unless https
@@ -13432,91 +15874,47 @@ var Url = (function () {
     /**
      * param: (value?: number | Scene)
      * ```
-     * return: Promise<boolean>
+     * return: Promise<any>
      * ```
      *
      * Adds this URL to the current scene as an HTML source by default.
      * Accepts an optional parameter value, which, when supplied,
      * points to the scene where item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
      *
-     *  Will raise an error if URL is not http or https.
+     * Will only raise an error if URL is not http or https.
+     *
+     * Note: There is yet no way to detect error responses for this action.
      */
     Url.prototype.addToScene = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
             var scenePrefix = '';
-            var scenePromise;
-            var checkSplitMode;
-            checkSplitMode = new Promise(function (splitPromise) {
-                app_1.App.getGlobalProperty('splitmode').then(function (res) {
-                    if (res === '1' && !value) {
-                        scene_1.Scene.getActiveScene().then(function (val) {
-                            value = val;
-                            splitPromise(value);
-                        });
-                    }
-                    else {
-                        splitPromise(value);
-                    }
-                });
-            });
-            checkSplitMode.then(function (value) {
-                if (typeof value === 'number' || value instanceof scene_1.Scene) {
-                    scenePromise = new Promise(function (innerResolve, innerReject) {
-                        scene_1.Scene.getSceneCount().then(function (sceneCount) {
-                            if (typeof value === 'number') {
-                                var int = Math.floor(value);
-                                if (int > sceneCount || int === 0) {
-                                    innerReject(Error('Scene not existing.'));
-                                }
-                                else {
-                                    scenePrefix = 's:' + (int - 1) + '|';
-                                    innerResolve();
-                                }
-                            }
-                            else {
-                                value.getSceneNumber().then(function (int) {
-                                    if (int > sceneCount || int === 0) {
-                                        innerReject(Error('Scene not existing.'));
-                                    }
-                                    else {
-                                        scenePrefix = 's:' + (int - 1) + '|';
-                                        innerResolve();
-                                    }
-                                });
-                            }
-                        });
-                    });
-                }
-                else if (typeof value === 'undefined') {
-                    scenePromise = Promise.resolve();
-                }
-                else {
-                    scenePromise = Promise.reject(Error('Optional parameter \'scene\' only accepts integers or an XJS.Scene object'));
-                }
-                scenePromise.then(function () {
-                    return _this._getUrl();
-                }).then(function (url) {
-                    return app_1.App.callFunc(scenePrefix + 'addurl', url);
-                }).then(function () {
-                    resolve(true);
-                }).catch(function (err) {
-                    reject(err);
-                });
+            splitmode_1.checkSplitmode(value).then(function (prefix) {
+                scenePrefix = prefix;
+                return _this._getUrl();
+            }).then(function (url) {
+                return addtosceneutil_1.addToSceneHandler(scenePrefix + 'addurl', url);
+            }).then(function (result) {
+                resolve(result);
+            }).catch(function (err) {
+                reject(err);
             });
         });
     };
     return Url;
 })();
 exports.Url = Url;
-},{"../core/scene":23,"../internal/app":49}],69:[function(require,module,exports){
+},{"../internal/util/splitmode":71,"../util/addtosceneutil":85}],84:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var app_1 = require('../internal/app');
 var json_1 = require('../internal/util/json');
 var xml_1 = require('../internal/util/xml');
 var io_1 = require('../util/io');
 var environment_1 = require('../core/environment');
-var scene_1 = require('../core/scene');
+var splitmode_1 = require('../internal/util/splitmode');
+var addtosceneutil_1 = require('../util/addtosceneutil');
 /**
  *  Special class for adding a video playlist to the stage.
  *
@@ -13573,8 +15971,8 @@ var VideoPlaylist = (function () {
                     }
                     var _inner_this = _this;
                     if (!isError) {
-                        app_1.App.get('preset:0').then(function (main) {
-                            return app_1.App.get('presetconfig:' + main);
+                        app_1.App.get('scene:0').then(function (main) {
+                            return app_1.App.get('sceneconfig:' + main);
                         }).then(function (presetConfig) {
                             var placementJSON = json_1.JSON.parse(presetConfig);
                             var defpos = placementJSON['defpos'];
@@ -13629,80 +16027,35 @@ var VideoPlaylist = (function () {
     /**
      * param: (value?: number | Scene)
      * ```
-     *  return: Promise<boolean>
+     *  return: Promise<any>
      * ```
      *
      * Adds the prepared video playlist to the current scene by default.
      * Accepts an optional parameter value, which when supplied,
      * points to the scene where item will be added instead.
+     * If ready config {listenToItemAdd: true} it returns item id,
+     * else returns boolean.
      * This function is not available to sources.
+     *
+     * Note: There is yet no way to detect error responses for this action.
      */
     VideoPlaylist.prototype.addToScene = function (value) {
         var _this = this;
         return new Promise(function (resolve, reject) {
+            var scenePrefix = '';
             if (environment_1.Environment.isSourcePlugin()) {
                 reject(Error('This function is not available to sources.'));
             }
             else {
-                var scenePrefix = '';
-                var scenePromise;
-                var checkSplitMode;
-                checkSplitMode = new Promise(function (splitPromise) {
-                    app_1.App.getGlobalProperty('splitmode').then(function (res) {
-                        if (res === '1' && !value) {
-                            scene_1.Scene.getActiveScene().then(function (val) {
-                                value = val;
-                                splitPromise(value);
-                            });
-                        }
-                        else {
-                            splitPromise(value);
-                        }
-                    });
-                });
-                checkSplitMode.then(function (value) {
-                    if (typeof value === 'number' || value instanceof scene_1.Scene) {
-                        scenePromise = new Promise(function (innerResolve, innerReject) {
-                            scene_1.Scene.getSceneCount().then(function (sceneCount) {
-                                if (typeof value === 'number') {
-                                    var int = Math.floor(value);
-                                    if (int > sceneCount || int === 0) {
-                                        innerReject(Error('Scene not existing.'));
-                                    }
-                                    else {
-                                        scenePrefix = 's:' + (int - 1) + '|';
-                                        innerResolve();
-                                    }
-                                }
-                                else {
-                                    value.getSceneNumber().then(function (int) {
-                                        if (int > sceneCount || int === 0) {
-                                            innerReject(Error('Scene not existing.'));
-                                        }
-                                        else {
-                                            scenePrefix = 's:' + (int - 1) + '|';
-                                            innerResolve();
-                                        }
-                                    });
-                                }
-                            });
-                        });
-                    }
-                    else if (typeof value === 'undefined') {
-                        scenePromise = Promise.resolve();
-                    }
-                    else {
-                        scenePromise = Promise.reject(Error('Optional parameter \'scene\' only accepts integers or an XJS.Scene object'));
-                    }
-                    scenePromise.then(function () {
-                        return _this.toXML();
-                    }).then(function (fileItem) {
-                        return app_1.App.callFunc(scenePrefix + 'additem', ' ' + fileItem);
-                    }).then(function () {
-                        resolve(true);
-                    }).catch(function (err) {
-                        reject(err);
-                    });
+                splitmode_1.checkSplitmode(value).then(function (prefix) {
+                    scenePrefix = prefix;
+                    return _this.toXML();
+                }).then(function (fileItem) {
+                    return addtosceneutil_1.addToSceneHandler(scenePrefix + 'additem', ' ' + fileItem);
+                }).then(function (result) {
+                    resolve(result);
+                }).catch(function (err) {
+                    reject(err);
                 });
             }
         });
@@ -13710,7 +16063,85 @@ var VideoPlaylist = (function () {
     return VideoPlaylist;
 })();
 exports.VideoPlaylist = VideoPlaylist;
-},{"../core/environment":4,"../core/scene":23,"../internal/app":49,"../internal/util/json":56,"../internal/util/xml":60,"../util/io":72}],70:[function(require,module,exports){
+},{"../core/environment":4,"../internal/app":61,"../internal/util/json":68,"../internal/util/splitmode":71,"../internal/util/xml":73,"../util/addtosceneutil":85,"../util/io":88}],85:[function(require,module,exports){
+/// <reference path="../../defs/es6-promise.d.ts" />
+/// <reference path="../../defs/window.d.ts" />
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var eventemitter_1 = require('./eventemitter');
+var app_1 = require('../internal/app');
+var global_1 = require('../internal/global');
+var internal_1 = require('../internal/internal');
+var window_1 = require('./window');
+var AddToSceneEventEmitter = (function (_super) {
+    __extends(AddToSceneEventEmitter, _super);
+    function AddToSceneEventEmitter() {
+        var _this = this;
+        _super.call(this);
+        if (global_1.Global.isListenToItemAdd()) {
+            //create listener for adding items
+            var prevAppOnItemAdded = window_1.default.AppOnItemAdded;
+            window_1.default.AppOnItemAdded = function () {
+                var args = [];
+                for (var _i = 0; _i < arguments.length; _i++) {
+                    args[_i - 0] = arguments[_i];
+                }
+                _this.emit(args[0], args[1]);
+                if (typeof prevAppOnItemAdded === 'function')
+                    prevAppOnItemAdded.apply(void 0, args);
+            };
+            internal_1.exec('AppSubscribeEvents');
+        }
+    }
+    //Gets/Creates the instance of the AddToSceneEventEmitter class.
+    AddToSceneEventEmitter.getInstance = function () {
+        if (AddToSceneEventEmitter._instance === undefined) {
+            AddToSceneEventEmitter._instance = new AddToSceneEventEmitter();
+        }
+        return AddToSceneEventEmitter._instance;
+    };
+    return AddToSceneEventEmitter;
+})(eventemitter_1.EventEmitter);
+exports.AddToSceneEventEmitter = AddToSceneEventEmitter;
+//https://gist.github.com/jed/982883
+function guid(a) {
+    return a
+        ? (a ^ ((Math.random() * 16) >> (a / 4))).toString(16)
+        : ('' + 1e7 + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, guid);
+}
+exports.guid = guid;
+function addToSceneHandler(cmd) {
+    var args = [];
+    for (var _i = 1; _i < arguments.length; _i++) {
+        args[_i - 1] = arguments[_i];
+    }
+    return new Promise(function (resolve, reject) {
+        var eventId = 'EVENT-XJS-CREATE-' + guid(null) + '-' + Date.now();
+        if (global_1.Global.isListenToItemAdd()) {
+            var _addToScene = AddToSceneEventEmitter.getInstance();
+            var itemCreated = function (itemId) {
+                _addToScene.off(eventId, itemCreated);
+                resolve(itemId);
+            };
+            _addToScene.on(eventId, itemCreated);
+        }
+        //actual creation of item
+        app_1.App.callFunc.apply(app_1.App, ['e:' + eventId + '|' + cmd].concat(args))
+            .then(function () {
+            if (!global_1.Global.isListenToItemAdd())
+                resolve(true);
+        })
+            .catch(function (err) {
+            reject(err);
+        });
+    });
+}
+exports.addToSceneHandler = addToSceneHandler;
+},{"../internal/app":61,"../internal/global":63,"../internal/internal":65,"./eventemitter":87,"./window":93}],86:[function(require,module,exports){
 var Color = (function () {
     function Color(props) {
         if (props['rgb'] !== undefined) {
@@ -13804,7 +16235,7 @@ var Color = (function () {
     return Color;
 })();
 exports.Color = Color;
-},{}],71:[function(require,module,exports){
+},{}],87:[function(require,module,exports){
 var remote_1 = require('../internal/remote');
 // simple event emitter
 var EventEmitter = (function () {
@@ -13928,7 +16359,7 @@ var EventEmitter = (function () {
     return EventEmitter;
 })();
 exports.EventEmitter = EventEmitter;
-},{"../internal/remote":55}],72:[function(require,module,exports){
+},{"../internal/remote":67}],88:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var internal_1 = require('../internal/internal');
 var environment_1 = require('../core/environment');
@@ -14106,7 +16537,7 @@ var IO = (function () {
                 IO._remoteCallback[result['file']].shift().resolve(result['result']);
             }
             else {
-                IO._remoteCallback[decodeURIComponent(result['file'])].shift().reject(Error('Invalid file path.'));
+                IO._remoteCallback[decodeURIComponent(result['file'])].shift().reject(Error("Invalid file path or cannot get file duration: '" + decodeURIComponent(result['file']) + "'"));
             }
         });
     };
@@ -14140,7 +16571,7 @@ window_1.default.OnGetVideoDurationFailed = function (file) {
         IO._proxyCallback[decodeURIComponent(file)][0].apply(this, [undefined, file]);
     }
     else {
-        IO._callback[decodeURIComponent(file)].shift().reject(Error('Invalid file path.'));
+        IO._callback[decodeURIComponent(file)].shift().reject(Error("Invalid file path or cannot get file duration: '" + decodeURIComponent(file) + "'"));
         if (IO._callback[decodeURIComponent(file)].length === 0) {
             delete IO._callback[decodeURIComponent(file)];
         }
@@ -14149,7 +16580,80 @@ window_1.default.OnGetVideoDurationFailed = function (file) {
         oldOnGetVideoDuration(file);
     }
 };
-},{"../core/environment":4,"../internal/internal":53,"../internal/remote":55,"./window":75}],73:[function(require,module,exports){
+},{"../core/environment":4,"../internal/internal":65,"../internal/remote":67,"./window":93}],89:[function(require,module,exports){
+var game_1 = require('../core/items/game');
+var camera_1 = require('../core/items/camera');
+var audio_1 = require('../core/items/audio');
+var videoplaylist_1 = require('../core/items/videoplaylist');
+var html_1 = require('../core/items/html');
+var flash_1 = require('../core/items/flash');
+var screen_1 = require('../core/items/screen');
+var image_1 = require('../core/items/image');
+var media_1 = require('../core/items/media');
+var sceneitem_1 = require('../core/items/sceneitem');
+var genericitem_1 = require('../core/items/genericitem');
+var group_1 = require('../core/items/group');
+var replay_1 = require('../core/items/replay');
+var isource_1 = require('../core/source/isource');
+var iplayback_1 = require('../core/source/iplayback');
+function ItemTypeResolve(item) {
+    var itemType;
+    var type = Number(item['type']);
+    var itemValue = item['item'];
+    var uppercaseValue = itemValue.toUpperCase();
+    if (type === isource_1.ItemTypes.GAMESOURCE) {
+        itemType = new game_1.GameItem(item);
+    }
+    else if ((type === isource_1.ItemTypes.HTML || type === isource_1.ItemTypes.FILE) &&
+        item['name'].indexOf('Video Playlist') === 0 &&
+        item['FilePlaylist'] !== '') {
+        itemType = new videoplaylist_1.VideoPlaylistItem(item);
+    }
+    else if (type === isource_1.ItemTypes.HTML) {
+        itemType = new html_1.HtmlItem(item);
+    }
+    else if (type === isource_1.ItemTypes.SCREEN) {
+        itemType = new screen_1.ScreenItem(item);
+    }
+    else if (type === isource_1.ItemTypes.BITMAP ||
+        type === isource_1.ItemTypes.FILE &&
+            /\.gif$/i.test(itemValue)) {
+        itemType = new image_1.ImageItem(item);
+    }
+    else if (type === isource_1.ItemTypes.FILE &&
+        /\.(gif|xbs)$/i.test(itemValue) === false &&
+        /^(rtsp|rtmp):\/\//i.test(itemValue) === false &&
+        (iplayback_1.VIDEO_REGEX.test(itemValue.split('*')[0]) ||
+            iplayback_1.AUDIO_REGEX.test(itemValue.split('*')[0]))) {
+        itemType = new media_1.MediaItem(item);
+    }
+    else if (type === isource_1.ItemTypes.LIVE &&
+        uppercaseValue.indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') === -1) {
+        itemType = new camera_1.CameraItem(item);
+    }
+    else if (type === isource_1.ItemTypes.LIVE &&
+        uppercaseValue.indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') !== -1) {
+        itemType = new audio_1.AudioItem(item);
+    }
+    else if (type === isource_1.ItemTypes.FLASHFILE) {
+        itemType = new flash_1.FlashItem(item);
+    }
+    else if (type === isource_1.ItemTypes.SCENE || type === isource_1.ItemTypes.VIEW) {
+        itemType = new sceneitem_1.SceneItem(item);
+    }
+    else if (type === isource_1.ItemTypes.GROUP) {
+        itemType = new group_1.GroupItem(item);
+    }
+    else if (type === isource_1.ItemTypes.REPLAY) {
+        itemType = new replay_1.ReplayItem(item);
+    }
+    else {
+        itemType = new genericitem_1.GenericItem(item);
+    }
+    return itemType;
+}
+exports.ItemTypeResolve = ItemTypeResolve;
+},{"../core/items/audio":7,"../core/items/camera":8,"../core/items/flash":9,"../core/items/game":10,"../core/items/genericitem":11,"../core/items/group":12,"../core/items/html":13,"../core/items/image":19,"../core/items/media":22,"../core/items/replay":23,"../core/items/sceneitem":24,"../core/items/screen":25,"../core/items/videoplaylist":26,"../core/source/iplayback":46,"../core/source/isource":50}],90:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var version_1 = require('../internal/util/version');
 var init_1 = require('../internal/init');
@@ -14181,7 +16685,7 @@ function finishReady(config) {
         if (isReady && !isInit) {
             channelmanager_1._subscribeEventManager();
             setOnce();
-            init_1.default();
+            init_1.default(config);
         }
         if (readyResolve !== undefined && remote_1.Remote.remoteType === 'remote') {
             readyResolve.call(_this, null);
@@ -14225,7 +16729,7 @@ function setOnce() {
     isInit = true;
 }
 exports.setOnce = setOnce;
-},{"../core/channelmanager":2,"../core/environment":4,"../internal/init":52,"../internal/remote":55,"../internal/util/version":59}],74:[function(require,module,exports){
+},{"../core/channelmanager":2,"../core/environment":4,"../internal/init":64,"../internal/remote":67,"../internal/util/version":72}],91:[function(require,module,exports){
 /**
  *  The Rectangle class is a utility class used in many different parts of the
  *  framework. Please note that there are cases where the framework uses
@@ -14442,7 +16946,77 @@ var Rectangle = (function () {
     return Rectangle;
 })();
 exports.Rectangle = Rectangle;
-},{}],75:[function(require,module,exports){
+},{}],92:[function(require,module,exports){
+/// <reference path="../../defs/es6-promise.d.ts" />
+var source_1 = require('../core/source/source');
+var game_1 = require('../core/source/game');
+var camera_1 = require('../core/source/camera');
+var audio_1 = require('../core/source/audio');
+var videoplaylist_1 = require('../core/source/videoplaylist');
+var html_1 = require('../core/source/html');
+var flash_1 = require('../core/source/flash');
+var screen_1 = require('../core/source/screen');
+var image_1 = require('../core/source/image');
+var replay_1 = require('../core/source/replay');
+var scenesource_1 = require('../core/source/scenesource');
+var isource_1 = require('../core/source/isource');
+var media_1 = require('../core/source/media');
+var iplayback_1 = require('../core/source/iplayback');
+function SourceTypeResolve(source) {
+    var srcType;
+    var type = Number(source['type']);
+    var sourceValue = source['item'];
+    var uppercaseValue = sourceValue.toUpperCase();
+    if (type === isource_1.ItemTypes.GAMESOURCE) {
+        srcType = new game_1.GameSource(source);
+    }
+    else if ((type === isource_1.ItemTypes.HTML || type === isource_1.ItemTypes.FILE) &&
+        source['name'].indexOf('Video Playlist') === 0 &&
+        source['FilePlaylist'] !== '') {
+        srcType = new videoplaylist_1.VideoPlaylistSource(source);
+    }
+    else if (type === isource_1.ItemTypes.HTML) {
+        srcType = new html_1.HtmlSource(source);
+    }
+    else if (type === isource_1.ItemTypes.SCREEN) {
+        srcType = new screen_1.ScreenSource(source);
+    }
+    else if (type === isource_1.ItemTypes.BITMAP ||
+        type === isource_1.ItemTypes.FILE &&
+            /\.gif$/i.test(sourceValue)) {
+        srcType = new image_1.ImageSource(source);
+    }
+    else if (type === isource_1.ItemTypes.FILE &&
+        /\.(gif|xbs)$/i.test(sourceValue) === false &&
+        /^(rtsp|rtmp):\/\//i.test(sourceValue) === false &&
+        (iplayback_1.VIDEO_REGEX.test(sourceValue.split('*')[0]) ||
+            iplayback_1.AUDIO_REGEX.test(sourceValue.split('*')[0]))) {
+        srcType = new media_1.MediaSource(source);
+    }
+    else if (type === isource_1.ItemTypes.LIVE &&
+        uppercaseValue.indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') === -1) {
+        srcType = new camera_1.CameraSource(source);
+    }
+    else if (type === isource_1.ItemTypes.LIVE &&
+        uppercaseValue.indexOf('{33D9A762-90C8-11D0-BD43-00A0C911CE86}') !== -1) {
+        srcType = new audio_1.AudioSource(source);
+    }
+    else if (type === isource_1.ItemTypes.FLASHFILE) {
+        srcType = new flash_1.FlashSource(source);
+    }
+    else if (type === isource_1.ItemTypes.REPLAY) {
+        srcType = new replay_1.ReplaySource(source);
+    }
+    else if (type === isource_1.ItemTypes.SCENE || type === isource_1.ItemTypes.VIEW) {
+        srcType = new scenesource_1.SceneSource(source);
+    }
+    else {
+        srcType = new source_1.Source(source);
+    }
+    return srcType;
+}
+exports.SourceTypeResolve = SourceTypeResolve;
+},{"../core/source/audio":30,"../core/source/camera":31,"../core/source/flash":33,"../core/source/game":34,"../core/source/html":35,"../core/source/image":44,"../core/source/iplayback":46,"../core/source/isource":50,"../core/source/media":52,"../core/source/replay":53,"../core/source/scenesource":54,"../core/source/screen":55,"../core/source/source":56,"../core/source/videoplaylist":57}],93:[function(require,module,exports){
 (function (global){
 var win = {};
 if (typeof window !== 'undefined') {
@@ -14459,7 +17033,7 @@ else {
 }
 exports.default = win;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],76:[function(require,module,exports){
+},{}],94:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -14630,12 +17204,23 @@ var SourcePropsWindow = (function (_super) {
         });
     };
     ;
+    /**
+     *  param: show<boolean>
+     *
+     *  Toggles on/off the load indicator of the source properties dialog
+     */
+    SourcePropsWindow.prototype.showLoading = function (show) {
+        this._notify({
+            event: 'show-overlay',
+            value: show
+        });
+    };
     SourcePropsWindow._MODE_FULL = 'full';
     SourcePropsWindow._MODE_TABBED = 'embedded';
     return SourcePropsWindow;
 })(eventemitter_1.EventEmitter);
 exports.SourcePropsWindow = SourcePropsWindow;
-},{"../core/environment":4,"../internal/internal":53,"../internal/remote":55,"../util/eventemitter":71}],77:[function(require,module,exports){
+},{"../core/environment":4,"../internal/internal":65,"../internal/remote":67,"../util/eventemitter":87}],95:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 /// <reference path="../../defs/object.d.ts" />
 /// <reference path="../../defs/proxy.d.ts" />
@@ -14671,6 +17256,7 @@ var dialogProxy;
  *      .setTitle('ThisDialogReturnsAString')
  *      .setBorderOptions(true, false)
  *      .setButtons(true, true)
+        .setCookiePath('cookiePath')
  *      .show(function(dialog) {
  *        dialog.getResult().then(function(result) {
  *          document.getElementById('input').value = result;
@@ -14843,6 +17429,22 @@ var Dialog = (function () {
         return this;
     };
     /**
+     *  param: (cookiePath: string)
+     *
+     *  return: Dialog
+     *
+     *  Sets the cookie Path of the dialog.
+     *
+     * *Chainable.*
+     */
+    Dialog.prototype.setCookiePath = function (cookiePath) {
+        if (this._autoclose) {
+            throw new Error('Autoclosing dialogs cannot use this method.');
+        }
+        this._cookiePath = cookiePath;
+        return this;
+    };
+    /**
      *  return: Promise<Dialog>
      *
      *  After configuring the dialog, call this function to spawn it.
@@ -14862,10 +17464,33 @@ var Dialog = (function () {
             }
             else {
                 internal_1.exec('NewDialog', _this._url, '', _this._size === undefined ?
-                    undefined : (_this._size.toDimensionString()), _this._calculateFlags(), _this._title).then(function (result) {
+                    undefined : (_this._size.toDimensionString()), _this._calculateFlags(), _this._title, _this._cookiePath === undefined ?
+                    undefined : "<configuration cookiepath=\"" + _this._cookiePath + "\" />").then(function (result) {
                     resolve(_this);
                 });
             }
+        });
+    };
+    /**
+     *  param: (script: string)
+  
+     *  return: Promise<Dialog>
+     *
+     *  After configuring the dialog, call this function to spawn it.
+     *  A javascript string parameter can be passed to have more control over the dialog
+     *
+     * *Chainable.*
+     */
+    Dialog.prototype.showWithJS = function (script) {
+        var _this = this;
+        return new Promise(function (resolve) {
+            _this._result = null;
+            var windowParams = _this._size ? "cx:" + _this._size.getWidth() + "&cy:" + _this._size.getHeight() : '';
+            windowParams = _this._calculateFlags() !== '0' ? windowParams + "&flags:" + _this._calculateFlags() : windowParams;
+            internal_1.exec('NewDialog2', _this._url, '', windowParams, _this._title ? _this._title : '', _this._cookiePath ? "<configuration cookiepath=\"" + _this._cookiePath + "\" />" : '', script ? script : '', function (result) {
+                _this._result = result;
+                resolve(_this);
+            });
         });
     };
     /**
@@ -14954,7 +17579,7 @@ window_1.default.OnDialogResult = function (result) {
         oldOnDialogResult(result);
     }
 };
-},{"../core/environment":4,"../internal/internal":53,"../internal/remote":55,"../util/rectangle":74,"../util/window":75}],78:[function(require,module,exports){
+},{"../core/environment":4,"../internal/internal":65,"../internal/remote":67,"../util/rectangle":91,"../util/window":93}],96:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -14973,6 +17598,7 @@ var app_1 = require('../internal/app');
 var item_1 = require('../core/items/item');
 var extension_1 = require('../core/extension');
 var window_1 = require('../util/window');
+var splitmode_1 = require('../internal/util/splitmode');
 var _RESIZE = '2';
 /** This utility class represents the extension window. It allows manipulation
  *  of the window (e.g., resizing), and also serves as an event emitter
@@ -14983,8 +17609,11 @@ var _RESIZE = '2';
  *    - `sources-list-highlight`: notifies when a user hovers over a source in the stage, returning its source id, or when the mouse moves out of a source bounding box, returning null. Source id is also returned when hovering over the bottom panel. Handler is a function f(id: string)
  *    - `sources-list-select`: notifies when a user clicks a source in the stage. Source id is also returned when source is selected from the bottom panel. Handler is a function f(id: string)
  *    - `sources-list-update`: notifies when there are changes on list sources whether on stage or bottom panel. Handler is a function(ids: string) where ids are comma separated source ids.
- *    - `scene-delete` : notifies when a user deletes a scene. Handler is a function f(index: number). Works only on version 2.8.1606.1601 or higher.
- *    - `scene-add` : notifies when a user adds a scene. Handler is a function f(index: number). Works only on version 2.8.1606.1701 or higher.
+ *    - `scene-delete` : notifies when a scene is deleted. Handler is a function f(index: number, uid: string). Works only on version 2.8.1606.1601 or higher.
+ *    - `scene-add` : notifies when a scene is added. Handler is a function f(index: number, uid: string). Works only on version 2.8.1606.1701 or higher.
+ *    - `scene-delete-all` : notifies all scenes are deleted. Handler is a function f(type: newpres/loadpres). Works only on version 3.3.1801.1901 or higher.
+ *    - `bscn-load` : notifies when user loads a scene file via XBC, File menu > Load Scene...
+  *   - `push-to-live` : notifies when a particular scene was pushed to live by user. Handler is a function f(sceneIndex: number).
  *
  *  Use the `on(event: string, handler: Function)` function to listen to an event.
  *
@@ -15003,6 +17632,7 @@ var ExtensionWindow = (function (_super) {
         }
         ExtensionWindow._instance = this;
         ExtensionWindow._subscriptions = [];
+        ExtensionWindow._encounteredFirstSceneChange = false;
     }
     /**
      * ** For deprecation, the need for getting the instance of an ExtensionWindow looks redundant,
@@ -15055,13 +17685,26 @@ var ExtensionWindow = (function (_super) {
                 is.greaterThanOrEqualTo(version_1.deleteSceneEventFixVersion);
             var isAddSceneEventFixed = version_1.versionCompare(version_1.getVersion()).
                 is.greaterThanOrEqualTo(version_1.addSceneEventFixVersion);
+            var isSceneUidParamAvailable = version_1.versionCompare(version_1.getVersion()).
+                is.greaterThanOrEqualTo(version_1.sceneUidAddDeleteVersion);
             if (event === 'scene-delete' && isDeleteSceneEventFixed) {
-                if (ExtensionWindow._subscriptions.indexOf('SceneDeleted') < 0) {
-                    ExtensionWindow._subscriptions.push('SceneDeleted');
-                    eventmanager_1.EventManager.subscribe('SceneDeleted', function (settingsObj) {
+                var eventSubscribe = isSceneUidParamAvailable ? 'OnSceneDelete' : 'SceneDeleted';
+                if (ExtensionWindow._subscriptions.indexOf(eventSubscribe) < 0) {
+                    ExtensionWindow._subscriptions.push(eventSubscribe);
+                    eventmanager_1.EventManager.subscribe(eventSubscribe, function (settingsObj) {
                         if (environment_1.Environment.isExtension()) {
-                            ExtensionWindow.emit(settingsObj['id'] ? settingsObj['id'] : event, settingsObj['index'] === '' ?
-                                null : Number(settingsObj['index']) + 1);
+                            if (isSceneUidParamAvailable) {
+                                var returnObj = {};
+                                var sceneId = settingsObj['args'][1].split('&')[1].split(':');
+                                var sceneNum = settingsObj['args'][1].split('&')[2].split(':');
+                                returnObj[sceneId[0]] = sceneId[1];
+                                returnObj[sceneNum[0]] = Number(sceneNum[1]) + 1;
+                                ExtensionWindow.emit(settingsObj['id'] ? settingsObj['id'] : event, returnObj['scene'], returnObj['sceneid']);
+                            }
+                            else {
+                                ExtensionWindow.emit(settingsObj['id'] ? settingsObj['id'] : event, settingsObj['index'] === '' ?
+                                    null : Number(settingsObj['index']) + 1);
+                            }
                         }
                         resolve(this);
                     }, id);
@@ -15071,19 +17714,108 @@ var ExtensionWindow = (function (_super) {
                 }
             }
             else if (event === 'scene-add' && isAddSceneEventFixed) {
-                if (ExtensionWindow._subscriptions.indexOf('OnSceneAddByUser') < 0) {
-                    ExtensionWindow._subscriptions.push('OnSceneAddByUser');
-                    eventmanager_1.EventManager.subscribe('OnSceneAddByUser', function (settingsObj) {
-                        scene_1.Scene.getSceneCount().then(function (count) {
-                            if (environment_1.Environment.isExtension()) {
-                                ExtensionWindow.emit(settingsObj['id'] ? settingsObj['id'] : event, count);
-                                resolve(this);
-                            }
-                            else {
-                                reject(Error('ExtensionWindow class is only available for extensions.'));
-                            }
-                        });
+                var eventSubscribe = isSceneUidParamAvailable ? 'OnSceneAdd' : 'OnSceneAddByUser';
+                if (ExtensionWindow._subscriptions.indexOf(eventSubscribe) < 0) {
+                    ExtensionWindow._subscriptions.push(eventSubscribe);
+                    eventmanager_1.EventManager.subscribe(eventSubscribe, function (settingsObj) {
+                        if (isSceneUidParamAvailable) {
+                            var returnObj = {};
+                            var sceneId = settingsObj['args'][1].split('&')[1].split(':');
+                            var sceneNum = settingsObj['args'][1].split('&')[2].split(':');
+                            returnObj[sceneId[0]] = sceneId[1];
+                            returnObj[sceneNum[0]] = Number(sceneNum[1]) + 1;
+                            ExtensionWindow.emit(settingsObj['id'] ? settingsObj['id'] : event, returnObj['scene'], returnObj['sceneid']);
+                        }
+                        else {
+                            scene_1.Scene.getSceneCount().then(function (count) {
+                                if (environment_1.Environment.isExtension()) {
+                                    ExtensionWindow.emit(settingsObj['id'] ? settingsObj['id'] : event, count);
+                                    resolve(this);
+                                }
+                                else {
+                                    reject(Error('ExtensionWindow class is only available for extensions.'));
+                                }
+                            });
+                        }
                     }, id);
+                }
+                else {
+                    resolve(_this);
+                }
+            }
+            else if (event === 'scene-delete-all' && isSceneUidParamAvailable) {
+                if (ExtensionWindow._subscriptions.indexOf('OnSceneDeleteAll') < 0) {
+                    ExtensionWindow._subscriptions.push('OnSceneDeleteAll');
+                    eventmanager_1.EventManager.subscribe('OnSceneDeleteAll', function (settingsObj) {
+                        if (environment_1.Environment.isExtension()) {
+                            ExtensionWindow.emit(settingsObj['id'] ? settingsObj['id'] : event, settingsObj['args'][0]);
+                        }
+                        resolve(this);
+                    }, id);
+                }
+                else {
+                    resolve(_this);
+                }
+            }
+            else if (event === 'bscn-load') {
+                if (ExtensionWindow._subscriptions.indexOf('OnPropertyChange') < 0) {
+                    ExtensionWindow._subscriptions.push('OnPropertyChange');
+                    eventmanager_1.EventManager.subscribe('OnPropertyChange', function (settingsObj) {
+                        if (environment_1.Environment.isExtension()) {
+                            var property = settingsObj['args'][0];
+                            var newValue = settingsObj['args'][1];
+                            if (property.startsWith('sceneconfign:') || property.startsWith('sceneconfig:')) {
+                                var changedIndex = property.split(":")[1];
+                                scene_1.Scene.getActiveScene().then(function (scene) {
+                                    return scene.getSceneNumber();
+                                }).then(function (sceneNumber) {
+                                    if (typeof sceneNumber === 'number') {
+                                        sceneNumber = (sceneNumber - 1);
+                                    }
+                                    if (changedIndex === String(sceneNumber)) {
+                                        var placementJXON = json_1.JSON.parse(newValue);
+                                        ExtensionWindow.emit(settingsObj['id'] ? settingsObj['id'] : event, sceneNumber, placementJXON['id']);
+                                    }
+                                });
+                            }
+                        }
+                        resolve(this);
+                    }, id);
+                }
+                else {
+                    resolve(_this);
+                }
+            }
+            else if (event === 'push-to-live') {
+                if (ExtensionWindow._subscriptions.indexOf('scenedlg:1') < 0 && environment_1.Environment.isExtension()) {
+                    ExtensionWindow._subscriptions.push('scenedlg:1');
+                    eventmanager_1.EventManager.subscribe('scenedlg:1', function () {
+                        ExtensionWindow._encounteredFirstSceneChange = false;
+                    }, id);
+                    if (ExtensionWindow._subscriptions.indexOf('SceneChange') < 0) {
+                        ExtensionWindow._subscriptions.push('SceneChange');
+                        eventmanager_1.EventManager.subscribe('SceneChange', function (settingsObj) {
+                            var isSplitMode = false;
+                            var viewId = parseInt(settingsObj['args'][0]);
+                            var sceneIndex = parseInt(settingsObj['args'][1]);
+                            app_1.App.getGlobalProperty('splitmode').then(function (split) {
+                                isSplitMode = split === '1' ? true : false;
+                                if (isSplitMode) {
+                                    if (!ExtensionWindow._encounteredFirstSceneChange) {
+                                        if (viewId === 1) {
+                                            ExtensionWindow._encounteredFirstSceneChange = true;
+                                            ExtensionWindow.emit(settingsObj['id'] ? settingsObj['id'] : event, sceneIndex);
+                                        }
+                                    }
+                                }
+                                else {
+                                    if (viewId === 0)
+                                        ExtensionWindow.emit(settingsObj['id'] ? settingsObj['id'] : event, sceneIndex);
+                                }
+                            });
+                        }, id);
+                    }
+                    resolve(_this);
                 }
                 else {
                     resolve(_this);
@@ -15094,16 +17826,20 @@ var ExtensionWindow = (function (_super) {
                 //Just subscribe to the event. Emitter is already handled.
                 if (['sources-list-highlight', 'sources-list-select',
                     'sources-list-update'].indexOf(event) >= 0) {
-                    app_1.App.getGlobalProperty('splitmode').then(function (split) {
-                        var view = split === '1' ? item_1.ViewTypes.PREVIEW : item_1.ViewTypes.MAIN;
-                        try {
-                            internal_1.exec('SourcesListSubscribeEvents', view.toString()).then(function (res) {
-                                resolve(_this);
-                            });
-                        }
-                        catch (ex) {
-                        }
-                    });
+                    try {
+                        internal_1.exec('SourcesListSubscribeEvents', item_1.ViewTypes.MAIN.toString())
+                            .then(function (res) {
+                            return internal_1.exec('SourcesListSubscribeEvents', item_1.ViewTypes.PREVIEW.toString());
+                        })
+                            .then(function (res) {
+                            resolve(_this);
+                        })
+                            .catch(function (err) {
+                            resolve(_this);
+                        });
+                    }
+                    catch (ex) {
+                    }
                 }
                 else {
                     resolve(_this);
@@ -15222,6 +17958,7 @@ var ExtensionWindow = (function (_super) {
         app_1.App.postMessage('5', '1');
     };
     ExtensionWindow._subscriptions = [];
+    ExtensionWindow._encounteredFirstSceneChange = false;
     return ExtensionWindow;
 })(eventemitter_1.EventEmitter);
 exports.ExtensionWindow = ExtensionWindow;
@@ -15247,8 +17984,7 @@ window_1.default.SourcesListUpdate = function (view, sources) {
 };
 var oldSourcesListHighlight = window_1.default.SourcesListHighlight;
 window_1.default.SourcesListHighlight = function (view, id) {
-    app_1.App.getGlobalProperty('splitmode').then(function (res) {
-        var checkSplit = res === '1' ? 1 : 0;
+    splitmode_1.splitMode().then(function (checkSplit) {
         if (Number(view) === checkSplit) {
             ExtensionWindow.emit('sources-list-highlight', id === '' ?
                 null : id);
@@ -15260,8 +17996,7 @@ window_1.default.SourcesListHighlight = function (view, id) {
 };
 var oldSourcesListSelect = window_1.default.SourcesListSelect;
 window_1.default.SourcesListSelect = function (view, id) {
-    app_1.App.getGlobalProperty('splitmode').then(function (res) {
-        var checkSplit = res === '1' ? 1 : 0;
+    splitmode_1.splitMode().then(function (checkSplit) {
         if (Number(view) === checkSplit) {
             ExtensionWindow.emit('sources-list-select', id === '' ?
                 null : id);
@@ -15277,11 +18012,10 @@ window_1.default.OnSceneLoad = function () {
     for (var _i = 0; _i < arguments.length; _i++) {
         args[_i - 0] = arguments[_i];
     }
-    app_1.App.getGlobalProperty('splitmode').then(function (res) {
+    splitmode_1.splitMode().then(function (checkSplit) {
         if (environment_1.Environment.isExtension()) {
             var view = args[0];
             var scene = args[1];
-            var checkSplit = res === '1' ? 1 : 0;
             if (Number(view) === checkSplit && scene !== 'i12') {
                 ExtensionWindow.emit('scene-load', Number(scene));
             }
@@ -15291,7 +18025,7 @@ window_1.default.OnSceneLoad = function () {
         }
     });
 };
-},{"../core/environment":4,"../core/extension":5,"../core/items/item":16,"../core/scene":23,"../internal/app":49,"../internal/eventmanager":50,"../internal/internal":53,"../internal/util/json":56,"../internal/util/version":59,"../util/eventemitter":71,"../util/window":75}],79:[function(require,module,exports){
+},{"../core/environment":4,"../core/extension":5,"../core/items/item":20,"../core/scene":29,"../internal/app":61,"../internal/eventmanager":62,"../internal/internal":65,"../internal/util/json":68,"../internal/util/splitmode":71,"../internal/util/version":72,"../util/eventemitter":87,"../util/window":93}],97:[function(require,module,exports){
 /// <reference path="../../defs/es6-promise.d.ts" />
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
@@ -15459,13 +18193,14 @@ window_1.default.OnSceneLoad = function () {
         prevOnSceneLoad.apply(void 0, args);
     }
 };
-},{"../core/environment":4,"../internal/eventmanager":50,"../internal/global":51,"../internal/util/version":59,"../util/eventemitter":71,"../util/window":75}],"xjs":[function(require,module,exports){
+},{"../core/environment":4,"../internal/eventmanager":62,"../internal/global":63,"../internal/util/version":72,"../util/eventemitter":87,"../util/window":93}],"xjs":[function(require,module,exports){
 function __export(m) {
     for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
 }
 __export(require('./util/color'));
 __export(require('./util/rectangle'));
 __export(require('./util/io'));
+__export(require('./core/thumbnail'));
 __export(require('./core/environment'));
 __export(require('./core/app'));
 __export(require('./core/streaminfo'));
@@ -15474,6 +18209,7 @@ __export(require('./core/channelmanager'));
 __export(require('./core/languageinfo'));
 __export(require('./core/scene'));
 __export(require('./core/transition'));
+__export(require('./core/filter'));
 __export(require('./core/dll'));
 __export(require('./core/extension'));
 __export(require('./core/source/source'));
@@ -15486,6 +18222,8 @@ __export(require('./core/source/screen'));
 __export(require('./core/source/image'));
 __export(require('./core/source/media'));
 __export(require('./core/source/videoplaylist'));
+__export(require('./core/source/replay'));
+__export(require('./core/source/scenesource'));
 __export(require('./core/items/item'));
 __export(require('./core/items/camera'));
 __export(require('./core/items/game'));
@@ -15495,6 +18233,9 @@ __export(require('./core/items/flash'));
 __export(require('./core/items/screen'));
 __export(require('./core/items/image'));
 __export(require('./core/items/media'));
+__export(require('./core/items/group'));
+__export(require('./core/items/replay'));
+__export(require('./core/items/sceneitem'));
 __export(require('./core/items/videoplaylist'));
 var ieffects_1 = require('./core/items/ieffects');
 exports.MaskEffect = ieffects_1.MaskEffect;
@@ -15519,11 +18260,15 @@ __export(require('./system/url'));
 __export(require('./system/screen'));
 __export(require('./system/file'));
 __export(require('./system/videoplaylist'));
+__export(require('./system/group'));
+__export(require('./system/replay'));
 __export(require('./window/config'));
 __export(require('./window/source'));
 __export(require('./window/extension'));
 __export(require('./window/dialog'));
 __export(require('./internal/remote'));
+var internal_1 = require('./internal/internal');
+exports.exec = internal_1.exec;
 var ready_1 = require('./util/ready');
 exports.ready = ready_1.ready;
-},{"./core/app":1,"./core/channelmanager":2,"./core/dll":3,"./core/environment":4,"./core/extension":5,"./core/items/audio":6,"./core/items/camera":7,"./core/items/flash":8,"./core/items/game":9,"./core/items/html":10,"./core/items/ichroma":11,"./core/items/ieffects":13,"./core/items/image":15,"./core/items/item":16,"./core/items/media":18,"./core/items/screen":19,"./core/items/videoplaylist":20,"./core/languageinfo":21,"./core/output":22,"./core/scene":23,"./core/source/audio":24,"./core/source/camera":25,"./core/source/cuepoint":26,"./core/source/flash":27,"./core/source/game":28,"./core/source/html":29,"./core/source/image":37,"./core/source/iplayback":39,"./core/source/isource":41,"./core/source/media":43,"./core/source/screen":44,"./core/source/source":45,"./core/source/videoplaylist":46,"./core/streaminfo":47,"./core/transition":48,"./internal/remote":55,"./system/audio":61,"./system/camera":62,"./system/file":63,"./system/game":64,"./system/microphone":65,"./system/screen":66,"./system/system":67,"./system/url":68,"./system/videoplaylist":69,"./util/color":70,"./util/io":72,"./util/ready":73,"./util/rectangle":74,"./window/config":76,"./window/dialog":77,"./window/extension":78,"./window/source":79}]},{},["xjs"]);
+},{"./core/app":1,"./core/channelmanager":2,"./core/dll":3,"./core/environment":4,"./core/extension":5,"./core/filter":6,"./core/items/audio":7,"./core/items/camera":8,"./core/items/flash":9,"./core/items/game":10,"./core/items/group":12,"./core/items/html":13,"./core/items/ichroma":14,"./core/items/ieffects":16,"./core/items/image":19,"./core/items/item":20,"./core/items/media":22,"./core/items/replay":23,"./core/items/sceneitem":24,"./core/items/screen":25,"./core/items/videoplaylist":26,"./core/languageinfo":27,"./core/output":28,"./core/scene":29,"./core/source/audio":30,"./core/source/camera":31,"./core/source/cuepoint":32,"./core/source/flash":33,"./core/source/game":34,"./core/source/html":35,"./core/source/image":44,"./core/source/iplayback":46,"./core/source/isource":50,"./core/source/media":52,"./core/source/replay":53,"./core/source/scenesource":54,"./core/source/screen":55,"./core/source/source":56,"./core/source/videoplaylist":57,"./core/streaminfo":58,"./core/thumbnail":59,"./core/transition":60,"./internal/internal":65,"./internal/remote":67,"./system/audio":74,"./system/camera":75,"./system/file":76,"./system/game":77,"./system/group":78,"./system/microphone":79,"./system/replay":80,"./system/screen":81,"./system/system":82,"./system/url":83,"./system/videoplaylist":84,"./util/color":86,"./util/io":88,"./util/ready":90,"./util/rectangle":91,"./window/config":94,"./window/dialog":95,"./window/extension":96,"./window/source":97}]},{},["xjs"]);
